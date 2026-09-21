@@ -1,0 +1,127 @@
+#!/usr/bin/env python3
+"""One-shot runner for Disparchy. No secrets. No shell interpolation."""
+from __future__ import annotations
+
+import argparse
+import os
+import shutil
+import subprocess
+import sys
+import time
+
+ALLOWED = ("claude", "codex", "grok", "gemini", "cursor")
+
+BIN = {
+    "claude": ("claude",),
+    "codex": ("codex",),
+    "grok": ("grok",),
+    "gemini": ("gemini",),
+    "cursor": ("cursor-agent", "agent"),
+}
+
+
+def resolve(cli: str) -> str | None:
+    for name in BIN[cli]:
+        path = shutil.which(name)
+        if path:
+            return path
+    return None
+
+
+def argv_for(cli: str, binary: str, model: str, prompt: str) -> list[str]:
+    m = (model or "").strip()
+    if cli == "claude":
+        cmd = [binary, "-p", "--output-format", "text"]
+        if m:
+            cmd += ["--model", m]
+        cmd += ["--", prompt]
+        return cmd
+    if cli == "codex":
+        cmd = [binary, "exec"]
+        if m:
+            cmd += ["--model", m]
+        cmd += ["--", prompt]
+        return cmd
+    if cli == "grok":
+        cmd = [binary, "--no-auto-update", "-p", prompt]
+        if m:
+            cmd += ["--model", m]
+        cmd += ["--output-format", "plain"]
+        return cmd
+    if cli == "gemini":
+        cmd = [binary, "-p", prompt]
+        if m:
+            cmd += ["-m", m]
+        return cmd
+    if cli == "cursor":
+        cmd = [binary, "-p", "--output-format", "text"]
+        if m:
+            cmd += ["-m", m]
+        cmd += ["--", prompt]
+        return cmd
+    raise SystemExit(f"unknown cli: {cli}")
+
+
+def main() -> int:
+    p = argparse.ArgumentParser()
+    p.add_argument("--cli", choices=ALLOWED)
+    p.add_argument("--model", default="")
+    p.add_argument("--timeout", type=int, default=90)
+    p.add_argument("--prompt-file")
+    p.add_argument(
+        "--discover",
+        action="store_true",
+        help="Print CLIs whose binaries are on PATH, one per line.",
+    )
+    args = p.parse_args()
+
+    if args.discover:
+        for cli in ALLOWED:
+            if resolve(cli):
+                print(cli)
+        return 0
+
+    if not args.cli or not args.prompt_file:
+        p.error("--cli and --prompt-file are required unless --discover")
+
+    binary = resolve(args.cli)
+    if not binary:
+        print(f"missing:{args.cli}", file=sys.stderr)
+        return 2
+
+    prompt = open(args.prompt_file, encoding="utf-8").read()
+    if len(prompt.encode()) > 32 * 1024:
+        print("prompt too large (32KiB cap)", file=sys.stderr)
+        return 3
+
+    cmd = argv_for(args.cli, binary, args.model, prompt)
+    env = os.environ.copy()
+    env["TERM"] = "dumb"
+    started = time.monotonic()
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=args.timeout,
+            cwd=os.path.expanduser("~"),
+            env=env,
+        )
+    except subprocess.TimeoutExpired:
+        print("timeout", file=sys.stderr)
+        return 124
+
+    out = proc.stdout or ""
+    err = proc.stderr or ""
+    if len(out) > 256 * 1024:
+        out = out[: 256 * 1024] + "\n[truncated]"
+    sys.stdout.write(out)
+    if proc.returncode != 0:
+        sys.stderr.write(err[: 16 * 1024])
+        return proc.returncode
+    _ = started
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "id": "dkfiander.disparchy",
+  "name": "Disparchy",
+  "version": "0.1.0",
+  "author": "Donnie Fiander",
+  "license": "MIT",
+  "description": "Hotkey overlay: paste or type a prompt, pick CLI+model targets, fire in parallel, keep history.",
+  "homepage": "https://github.com/DonnieFi/Disparchy",
+  "repository": "https://github.com/DonnieFi/Disparchy",
+  "kinds": ["bar-widget", "overlay"],
+  "keepLoaded": true,
+  "entryPoints": {
+    "barWidget": "BarWidget.qml",
+    "overlay": "Overlay.qml"
+  },
+  "barWidget": {
+    "displayName": "Disparchy",
+    "description": "Dispatch one prompt to multiple local AI CLIs.",
+    "category": "AI",
+    "aliases": ["disparchy", "dispatch", "mux", "ask"],
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "timeoutSec": 90,
+      "historyMaxRuns": 50,
+      "modelClaude": "sonnet",
+      "modelCodex": "",
+      "modelGrok": "",
+      "modelGemini": "",
+      "modelCursor": ""
+    },
+    "schema": [
+      {
+        "key": "timeoutSec",
+        "type": "integer",
+        "label": "Per-target timeout (seconds)",
+        "min": 15,
+        "max": 300,
+        "step": 15,
+        "defaultValue": 90
+      },
+      {
+        "key": "historyMaxRuns",
+        "type": "integer",
+        "label": "History cap (runs)",
+        "min": 10,
+        "max": 200,
+        "step": 10,
+        "defaultValue": 50
+      },
+      {
+        "key": "modelClaude",
+        "type": "string",
+        "label": "Default Claude model",
+        "defaultValue": "sonnet"
+      },
+      {
+        "key": "modelCodex",
+        "type": "string",
+        "label": "Default Codex model (empty = CLI default)",
+        "defaultValue": ""
+      },
+      {
+        "key": "modelGrok",
+        "type": "string",
+        "label": "Default Grok model (empty = CLI default)",
+        "defaultValue": ""
+      },
+      {
+        "key": "modelGemini",
+        "type": "string",
+        "label": "Default Gemini model (empty = CLI default)",
+        "defaultValue": ""
+      },
+      {
+        "key": "modelCursor",
+        "type": "string",
+        "label": "Default Cursor model (empty = CLI default)",
+        "defaultValue": ""
+      }
+    ]
+  }
+}

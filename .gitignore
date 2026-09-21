@@ -1,0 +1,35 @@
+# Agent instruction files must not ship: omarchy plugin add clones this
+# tree into ~/.config/omarchy/plugins/, and coding agents treat those
+# filenames as trusted workspace policy.
+AGENT_PROMPT.md
+AGENTS.md
+CLAUDE.md
+.agents/
+.claude/
+.codex/
+.cursor/
+.grok/
+
+# Dotfiles / agent tooling — machine-local
+.*
+!.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+venv/
+
+# OS
+Thumbs.db
+
+# Secrets and scratch
+*.pem
+*.key
+*.p12
+*.log
+*.tmp
+*.swp
+*~
+scratch/
