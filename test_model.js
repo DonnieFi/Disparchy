@@ -231,6 +231,20 @@ eq(
     "live catalog replaces the stale list"
 )
 eq(M.setEndpoint({ models: {} }, "claude", "http://nope").endpoints, undefined, "cli ignores endpoint")
+eq(
+    M.endpointFor({ models: {} }, "openclaw"),
+    "http://127.0.0.1:18789",
+    "openclaw default endpoint"
+)
+eq(
+    M.setSecret({}, "openclaw", "sekret").openclaw,
+    "sekret",
+    "setSecret stores a key"
+)
+eq(M.setSecret({ openclaw: "sekret" }, "openclaw", ""), {}, "setSecret clears a blank key")
+eq(M.setSecret({}, "claude", "sekret"), {}, "claude has no api key line")
+eq(M.secretFor({ openclaw: "sekret" }, "claude"), "", "secretFor ignores other clis")
+is(M.serializeSelection({ models: {} }).indexOf("sekret") < 0, "selection json has no api key")
 eq(M.setAutoPaste({ models: {} }, true), { models: {}, autoPaste: true }, "autoPaste on")
 eq(M.setAutoPaste({ models: {}, autoPaste: true }, false), { models: {} }, "autoPaste off")
 eq(

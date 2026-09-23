@@ -29,6 +29,13 @@ ALLOWED = CLI_ALLOWED + HTTP_ALLOWED
 DEFAULT_ENDPOINT = {
     "ollama": "http://127.0.0.1:11434",
     "lmstudio": "http://127.0.0.1:1234",
+    "openclaw": "http://127.0.0.1:18789",
+    "hermes": "http://127.0.0.1:8642",
+}
+CHAT_HTTP = ("openclaw", "hermes")
+DEFAULT_CHAT_MODEL = {
+    "openclaw": "openclaw/default",
+    "hermes": "hermes-agent",
 }
 
 BIN = {
@@ -178,6 +185,77 @@ def http_complete(cli: str, endpoint: str, model: str, prompt: str, timeout: int
         raise SystemExit(str(exc.reason or exc)) from exc
     if cli == "ollama":
         return str(payload.get("response") or "")
+    choices = payload.get("choices") or []
+    if not choices:
+        return ""
+    message = choices[0].get("message") or {}
+    return str(message.get("content") or "")
+
+
+def chat_request(
+    cli: str,
+    endpoint: str,
+    model: str,
+    prompt: str,
+    bearer: str,
+) -> tuple[str, dict, dict[str, str]]:
+    base = endpoint_or_default(cli, endpoint).rstrip("/")
+    chosen = (model or "").strip() or DEFAULT_CHAT_MODEL.get(cli, "")
+    url = base + "/v1/chat/completions"
+    body = {
+        "model": chosen,
+        "messages": [{"role": "user", "content": prompt}],
+    }
+    headers = {"Content-Type": "application/json"}
+    token = (bearer or "").strip()
+    if token:
+        headers["Authorization"] = "Bearer " + token
+    return url, body, headers
+
+
+def read_bearer(path: str, cli: str) -> str:
+    if not path or cli not in CHAT_HTTP:
+        return ""
+    file = Path(path)
+    if file.is_symlink() or not file.is_file():
+        raise SystemExit("auth file refused")
+    if file.stat().st_mode & 0o077:
+        raise SystemExit("auth file must be mode 600")
+    try:
+        payload = json.loads(file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SystemExit("auth file unreadable") from exc
+    if not isinstance(payload, dict):
+        return ""
+    key = payload.get(cli)
+    if not isinstance(key, str):
+        return ""
+    return key.strip()
+
+
+def chat_complete(
+    cli: str,
+    endpoint: str,
+    model: str,
+    prompt: str,
+    timeout: int,
+    bearer: str,
+) -> str:
+    url, body, headers = chat_request(cli, endpoint, model, prompt, bearer)
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(body).encode(),
+        headers=headers,
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            payload = json.loads(resp.read().decode() or "{}")
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode(errors="replace")[:300]
+        raise SystemExit(f"HTTP {exc.code} {detail}") from exc
+    except urllib.error.URLError as exc:
+        raise SystemExit(str(exc.reason or exc)) from exc
     choices = payload.get("choices") or []
     if not choices:
         return ""
@@ -412,6 +490,7 @@ def main() -> int:
     p.add_argument("--timeout", type=int, default=90)
     p.add_argument("--prompt-file")
     p.add_argument("--endpoint", default="")
+    p.add_argument("--auth-file", default="")
     p.add_argument(
         "--discover",
         action="store_true",
@@ -453,6 +532,20 @@ def main() -> int:
     if len(prompt.encode()) > 32 * 1024:
         print("prompt too large (32KiB cap)", file=sys.stderr)
         return 3
+
+    if args.cli in CHAT_HTTP and args.auth_file:
+        bearer = read_bearer(args.auth_file, args.cli)
+        if bearer:
+            text = chat_complete(
+                args.cli,
+                args.endpoint,
+                args.model,
+                prompt,
+                args.timeout,
+                bearer,
+            )
+            sys.stdout.write(text)
+            return 0
 
     if args.cli in HTTP_ALLOWED:
         text = http_complete(args.cli, args.endpoint, args.model, prompt, args.timeout)

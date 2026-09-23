@@ -100,6 +100,40 @@ def test_empty_model_omits_flag():
     assert "q" in cmd
 
 
+def test_chat_request_sends_bearer():
+    mod = load()
+    url, body, headers = mod.chat_request("openclaw", "", "", "Hello", "sekret")
+    assert url == "http://127.0.0.1:18789/v1/chat/completions"
+    assert body["model"] == "openclaw/default"
+    assert body["messages"] == [{"role": "user", "content": "Hello"}]
+    assert headers["Authorization"] == "Bearer sekret"
+    assert "sekret" not in url
+    url, body, headers = mod.chat_request("hermes", "http://10.0.0.5:8642/", "custom", "Hi", "k")
+    assert url == "http://10.0.0.5:8642/v1/chat/completions"
+    assert body["model"] == "custom"
+    assert headers["Authorization"] == "Bearer k"
+
+
+def test_read_bearer_requires_mode_600():
+    import os
+    import tempfile
+
+    mod = load()
+    with tempfile.TemporaryDirectory() as folder:
+        path = Path(folder) / "auth.json"
+        path.write_text('{"openclaw": "sekret"}\n', encoding="utf-8")
+        os.chmod(path, 0o644)
+        try:
+            mod.read_bearer(str(path), "openclaw")
+        except SystemExit as exc:
+            assert "mode 600" in str(exc)
+        else:
+            raise AssertionError("loose auth file was accepted")
+        os.chmod(path, 0o600)
+        assert mod.read_bearer(str(path), "openclaw") == "sekret"
+        assert mod.read_bearer(str(path), "hermes") == ""
+
+
 def test_discover_exits_zero():
     proc = subprocess.run(
         [sys.executable, str(RUNNER), "--discover"],
@@ -155,6 +189,8 @@ if __name__ == "__main__":
     test_codex_exec_argv()
     test_file_prompt_argv()
     test_empty_model_omits_flag()
+    test_chat_request_sends_bearer()
+    test_read_bearer_requires_mode_600()
     test_discover_exits_zero()
     test_status_rows()
     test_missing_args_fail()

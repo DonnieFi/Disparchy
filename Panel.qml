@@ -23,6 +23,7 @@ Panel {
     property string menuCli: ""
     property int openPickers: 0
     property var selection: Model.emptySelection()
+    property var auth: ({})
     property var available: []
     property var providerStatus: []
     property var liveModels: ({})
@@ -53,6 +54,7 @@ Panel {
     readonly property string runnerPath: pluginDir + "/bin/disparchy-run"
     readonly property string historyPath: stateRoot + "/history.json"
     readonly property string selectionPath: stateRoot + "/selection.json"
+    readonly property string authPath: stateRoot + "/auth.json"
     readonly property string statusPath: stateRoot + "/status.json"
     readonly property string promptPath: stateRoot + "/prompt.txt"
 
@@ -247,6 +249,10 @@ Panel {
         root.selection = Model.parseSelection(raw)
     }
 
+    function applyAuth(raw) {
+        root.auth = Model.parseAuth(raw)
+    }
+
     function saveHistory() {
         historyFile.setText(Model.serializeHistory(root.history))
         root.tightenPerms()
@@ -255,6 +261,16 @@ Panel {
     function saveSelection() {
         selectionFile.setText(Model.serializeSelection(root.selection))
         root.tightenPerms()
+    }
+
+    function saveAuth() {
+        authFile.setText(Model.serializeAuth(root.auth))
+        root.tightenPerms()
+    }
+
+    function setSecret(cli, key) {
+        root.auth = Model.setSecret(root.auth, cli, key)
+        root.saveAuth()
     }
 
     function saveStatus() {
@@ -591,6 +607,17 @@ Panel {
     }
 
     FileView {
+        id: authFile
+        path: root.authPath
+        watchChanges: true
+        atomicWrites: true
+        printErrors: false
+        onLoaded: root.applyAuth(text())
+        onLoadFailed: root.applyAuth("{}")
+        onFileChanged: reload()
+    }
+
+    FileView {
         id: statusFile
         path: root.statusPath
         atomicWrites: true
@@ -673,6 +700,8 @@ Panel {
                 "--prompt-file", root.promptPath]
             var endpoint = Model.endpointFor(root.selection, job.cli)
             if (endpoint) cmd.push("--endpoint", endpoint)
+            if (Model.secretFor(root.auth, job.cli))
+                cmd.push("--auth-file", root.authPath)
             command = cmd
             running = true
         }
@@ -1279,7 +1308,7 @@ Panel {
                                 }
 
                                 Row {
-                                    visible: http
+                                    visible: Model.needsEndpoint(setupRow.cliId)
                                     width: parent.width
                                     height: visible ? Style.space(24) : 0
                                     spacing: Style.space(6)
@@ -1339,6 +1368,47 @@ Panel {
                                                 }
                                             }
                                         }
+                                    }
+                                }
+
+                                Item {
+                                    visible: Model.needsSecret(setupRow.cliId)
+                                    width: parent.width
+                                    height: visible ? Style.space(24) : 0
+
+                                    TextInput {
+                                        id: secretEdit
+                                        z: 1
+                                        anchors.fill: parent
+                                        leftPadding: Style.space(8)
+                                        verticalAlignment: TextInput.AlignVCenter
+                                        echoMode: TextInput.Password
+                                        text: Model.secretFor(root.auth, setupRow.cliId)
+                                        color: root.ink
+                                        font.family: root.fontFamily
+                                        font.pixelSize: Style.font.caption
+                                        selectByMouse: true
+                                        clip: true
+                                        onEditingFinished: root.setSecret(setupRow.cliId, text)
+                                    }
+
+                                    Text {
+                                        x: Style.space(8)
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        visible: secretEdit.text.length === 0
+                                        text: "API key"
+                                        color: root.dim
+                                        font.family: root.fontFamily
+                                        font.pixelSize: Style.font.caption
+                                    }
+
+                                    Rectangle {
+                                        anchors.fill: parent
+                                        z: -1
+                                        radius: Math.max(2, Style.cornerRadius / 2)
+                                        color: "transparent"
+                                        border.color: Qt.alpha(setupRow.tint, 0.7)
+                                        border.width: 1
                                     }
                                 }
                             }

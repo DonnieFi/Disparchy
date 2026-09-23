@@ -9,8 +9,8 @@ function cliList() {
         { id: "grok", label: "Grok", defaultModel: "", transport: "cli" },
         { id: "antigravity", label: "Antigravity", defaultModel: "", transport: "cli" },
         { id: "cursor", label: "Cursor", defaultModel: "", transport: "cli" },
-        { id: "openclaw", label: "OpenClaw", defaultModel: "", transport: "cli" },
-        { id: "hermes", label: "Hermes", defaultModel: "", transport: "cli" },
+        { id: "openclaw", label: "OpenClaw", defaultModel: "", transport: "cli", auth: true, defaultEndpoint: "http://127.0.0.1:18789", presets: ["http://127.0.0.1:18789"] },
+        { id: "hermes", label: "Hermes", defaultModel: "", transport: "cli", auth: true, defaultEndpoint: "http://127.0.0.1:8642", presets: ["http://127.0.0.1:8642"] },
         { id: "ollama", label: "Ollama", defaultModel: "", transport: "http", defaultEndpoint: "http://127.0.0.1:11434", presets: ["http://127.0.0.1:11434"] },
         { id: "lmstudio", label: "LM Studio", defaultModel: "", transport: "http", defaultEndpoint: "http://127.0.0.1:1234", presets: ["http://127.0.0.1:1234"] }
     ]
@@ -288,7 +288,51 @@ function providerOf(cli) {
 
 function needsEndpoint(cli) {
     var row = providerOf(cli)
-    return !!(row && row.transport === "http")
+    return !!(row && (row.transport === "http" || row.auth))
+}
+
+function needsSecret(cli) {
+    var row = providerOf(cli)
+    return !!(row && row.auth)
+}
+
+function copySecrets(src) {
+    var out = {}
+    if (!src || typeof src !== "object" || Array.isArray(src)) return out
+    for (var k in src) {
+        if (!Object.prototype.hasOwnProperty.call(src, k)) continue
+        if (!needsSecret(k)) continue
+        var text = String(src[k] || "").replace(/\s+/g, "")
+        if (!text || text.length > 4096) continue
+        out[k] = text
+    }
+    return out
+}
+
+function parseAuth(raw) {
+    try {
+        return copySecrets(JSON.parse(String(raw || "{}")))
+    } catch (e) {
+        return {}
+    }
+}
+
+function serializeAuth(auth) {
+    return JSON.stringify(copySecrets(auth), null, 2) + "\n"
+}
+
+function secretFor(auth, cli) {
+    if (!needsSecret(cli)) return ""
+    return auth && auth[cli] ? String(auth[cli]) : ""
+}
+
+function setSecret(auth, cli, key) {
+    var out = copySecrets(auth)
+    var id = String(cli || "")
+    var text = String(key || "").replace(/\s+/g, "")
+    if (needsSecret(id) && text && text.length <= 4096) out[id] = text
+    else delete out[id]
+    return out
 }
 
 function cleanEnabled(src) {
