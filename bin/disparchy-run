@@ -3,32 +3,360 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
+from pathlib import Path
 
-ALLOWED = ("claude", "codex", "grok", "gemini", "cursor")
+CLI_ALLOWED = (
+    "claude",
+    "codex",
+    "grok",
+    "antigravity",
+    "cursor",
+    "openclaw",
+    "hermes",
+)
+HTTP_ALLOWED = ("ollama", "lmstudio")
+ALLOWED = CLI_ALLOWED + HTTP_ALLOWED
+
+DEFAULT_ENDPOINT = {
+    "ollama": "http://127.0.0.1:11434",
+    "lmstudio": "http://127.0.0.1:1234",
+}
 
 BIN = {
     "claude": ("claude",),
     "codex": ("codex",),
     "grok": ("grok",),
-    "gemini": ("gemini",),
+    "antigravity": ("agy",),
     "cursor": ("cursor-agent", "agent"),
+    "openclaw": ("openclaw",),
+    "hermes": ("hermes",),
 }
 
 
 def resolve(cli: str) -> str | None:
-    for name in BIN[cli]:
+    names = BIN.get(cli)
+    if not names:
+        return None
+    for name in names:
         path = shutil.which(name)
         if path:
             return path
     return None
 
 
-def argv_for(cli: str, binary: str, model: str, prompt: str) -> list[str]:
+def auth_label(cli: str, binary: str) -> str:
+    try:
+        if cli == "claude":
+            proc = subprocess.run(
+                [binary, "auth", "status"],
+                capture_output=True,
+                text=True,
+                timeout=4,
+            )
+            body = proc.stdout or ""
+            if '"loggedIn": true' in body or '"loggedIn":true' in body:
+                return "signed-in"
+            return "signed-out"
+        if cli == "codex":
+            proc = subprocess.run(
+                [binary, "login", "status"],
+                capture_output=True,
+                text=True,
+                timeout=4,
+            )
+            if "Logged in" in (proc.stdout or ""):
+                return "signed-in"
+            return "signed-out"
+        if cli == "cursor":
+            proc = subprocess.run(
+                [binary, "status"],
+                capture_output=True,
+                text=True,
+                timeout=4,
+            )
+            if "Logged in" in (proc.stdout or ""):
+                return "signed-in"
+            return "signed-out"
+        if cli == "gemini":
+            proc = subprocess.run(
+                [binary, "auth", "status"],
+                capture_output=True,
+                text=True,
+                timeout=4,
+            )
+            blob = (proc.stdout or "") + (proc.stderr or "")
+            if "Please set an Auth" in blob or "GEMINI_API_KEY" in blob:
+                return "signed-out"
+            return "signed-in" if proc.returncode == 0 else "unknown"
+        if cli == "grok":
+            auth = Path.home() / ".grok" / "auth.json"
+            if auth.is_file() and auth.stat().st_size > 2:
+                return "signed-in"
+            return "signed-out"
+    except (subprocess.TimeoutExpired, OSError):
+        return "unknown"
+    return "unknown"
+
+
+def codexbar_hints() -> dict[str, str]:
+    binary = shutil.which("codexbar")
+    if not binary:
+        return {}
+    try:
+        proc = subprocess.run(
+            [binary, "usage", "--json", "--no-color", "--source", "cli", "--provider", "all"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return {}
+    if proc.returncode != 0 or not (proc.stdout or "").strip():
+        return {}
+    try:
+        import json
+        payload = json.loads(proc.stdout)
+    except Exception:
+        return {}
+    rows = payload if isinstance(payload, list) else payload.get("providers") if isinstance(payload, dict) else None
+    if not isinstance(rows, list):
+        return {}
+    hints: dict[str, str] = {}
+    alias = {"claude": "claude", "codex": "codex", "gemini": "gemini", "cursor": "cursor", "grok": "grok", "xai": "grok"}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        key = alias.get(str(row.get("provider") or row.get("id") or "").lower(), "")
+        if not key:
+            continue
+        err = row.get("error")
+        blob = err if isinstance(err, str) else str(err or "")
+        if "auth" in blob.lower() or "unauthorized" in blob.lower():
+            hints[key] = "signed-out"
+        elif row.get("accountEmail") or row.get("account"):
+            hints[key] = "signed-in"
+    return hints
+
+
+def endpoint_or_default(cli: str, endpoint: str) -> str:
+    text = (endpoint or "").strip()
+    return text or DEFAULT_ENDPOINT.get(cli, "")
+
+
+def http_complete(cli: str, endpoint: str, model: str, prompt: str, timeout: int) -> str:
+    base = endpoint_or_default(cli, endpoint).rstrip("/")
+    if not base:
+        raise SystemExit("missing endpoint")
+    if cli == "ollama":
+        url = base + "/api/generate"
+        body = {"model": (model or "llama3.2").strip(), "prompt": prompt, "stream": False}
+    else:
+        url = base + "/v1/chat/completions"
+        body = {
+            "model": (model or "local").strip(),
+            "messages": [{"role": "user", "content": prompt}],
+        }
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(body).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            payload = json.loads(resp.read().decode() or "{}")
+    except urllib.error.URLError as exc:
+        raise SystemExit(str(exc.reason or exc)) from exc
+    if cli == "ollama":
+        return str(payload.get("response") or "")
+    choices = payload.get("choices") or []
+    if not choices:
+        return ""
+    message = choices[0].get("message") or {}
+    return str(message.get("content") or "")
+
+
+def http_auth(cli: str, endpoint: str) -> str:
+    base = endpoint_or_default(cli, endpoint).rstrip("/")
+    path = "/api/tags" if cli == "ollama" else "/v1/models"
+    try:
+        with urllib.request.urlopen(base + path, timeout=1.5) as resp:
+            return "signed-in" if resp.status == 200 else "signed-out"
+    except Exception:
+        return "signed-out"
+
+
+def gateway_up(port: int = 18789) -> bool:
+    sock = socket.socket()
+    sock.settimeout(0.4)
+    try:
+        sock.connect(("127.0.0.1", port))
+        return True
+    except OSError:
+        return False
+    finally:
+        sock.close()
+
+
+def emit_model(cli: str, value: str, label: str) -> None:
+    text = (value or "").strip()
+    if not text:
+        return
+    print(f"{cli}\t{text}\t{(label or text).strip()}")
+
+
+def parse_codex_models(raw: str) -> list[tuple[str, str]]:
+    try:
+        data = json.loads(raw or "{}")
+    except json.JSONDecodeError:
+        return []
+    out: list[tuple[str, str]] = []
+    for row in data.get("models") or []:
+        if not isinstance(row, dict):
+            continue
+        if row.get("visibility") == "hidden":
+            continue
+        slug = str(row.get("slug") or "").strip()
+        if slug:
+            out.append((slug, str(row.get("display_name") or slug)))
+    return out
+
+
+def parse_dash_models(raw: str) -> list[tuple[str, str]]:
+    out: list[tuple[str, str]] = []
+    for line in (raw or "").splitlines():
+        text = line.strip()
+        if " - " not in text:
+            continue
+        value, label = text.split(" - ", 1)
+        value = value.strip()
+        if value:
+            out.append((value, label.strip() or value))
+    return out
+
+
+def parse_grok_models(raw: str) -> list[tuple[str, str]]:
+    out: list[tuple[str, str]] = []
+    for line in (raw or "").splitlines():
+        text = line.strip().lstrip("*").lstrip("-").strip()
+        if not text or text.startswith("You are") or text.startswith("Default") or text.startswith("Available"):
+            continue
+        name = text.replace("(default)", "").strip()
+        if name and " " not in name:
+            out.append((name, name))
+    return out
+
+
+def parse_tab_models(raw: str) -> list[tuple[str, str]]:
+    out: list[tuple[str, str]] = []
+    for line in (raw or "").splitlines():
+        if "\t" not in line or line.startswith("Fetch"):
+            continue
+        value, label = line.split("\t", 1)
+        value = value.strip()
+        if value:
+            out.append((value, label.strip() or value))
+    return out
+
+
+def print_models() -> None:
+    probes = (
+        ("codex", ["codex", "debug", "models"], parse_codex_models),
+        ("grok", ["grok", "models"], parse_grok_models),
+        ("cursor", ["cursor-agent", "models"], parse_dash_models),
+        ("antigravity", ["agy", "models"], parse_tab_models),
+    )
+    for cli, cmd, parser in probes:
+        binary = resolve(cli) if cli != "cursor" else (resolve("cursor") or shutil.which("cursor-agent"))
+        if cli != "cursor" and not binary:
+            continue
+        argv = cmd if cli != "cursor" else [binary or "cursor-agent", "models"]
+        if cli != "cursor":
+            argv = [binary, *cmd[1:]]
+        try:
+            proc = subprocess.run(argv, capture_output=True, text=True, timeout=6)
+        except (subprocess.TimeoutExpired, OSError):
+            continue
+        rows = parser(proc.stdout or "")[:30]
+        for value, label in rows:
+            emit_model(cli, value, label)
+    claw = resolve("openclaw")
+    if claw:
+        try:
+            proc = subprocess.run(
+                [claw, "models", "list", "--json"],
+                capture_output=True,
+                text=True,
+                timeout=6,
+            )
+            payload = json.loads(proc.stdout or "{}")
+        except (subprocess.TimeoutExpired, OSError, json.JSONDecodeError):
+            payload = {}
+        for row in (payload.get("models") or [])[:30]:
+            if isinstance(row, str):
+                emit_model("openclaw", row, row)
+            elif isinstance(row, dict):
+                value = str(row.get("id") or row.get("name") or "").strip()
+                emit_model("openclaw", value, str(row.get("name") or value))
+    for cli in HTTP_ALLOWED:
+        base = endpoint_or_default(cli, "").rstrip("/")
+        path = "/api/tags" if cli == "ollama" else "/v1/models"
+        try:
+            with urllib.request.urlopen(base + path, timeout=1.5) as resp:
+                payload = json.loads(resp.read().decode() or "{}")
+        except Exception:
+            continue
+        if cli == "ollama":
+            for row in (payload.get("models") or [])[:30]:
+                if isinstance(row, dict):
+                    emit_model(cli, str(row.get("name") or ""), str(row.get("name") or ""))
+        else:
+            for row in (payload.get("data") or [])[:30]:
+                if isinstance(row, dict):
+                    emit_model(cli, str(row.get("id") or ""), str(row.get("id") or ""))
+
+
+def print_status() -> None:
+    hints = codexbar_hints()
+    for cli in CLI_ALLOWED:
+        binary = resolve(cli)
+        if cli == "openclaw" and binary:
+            mode = "gateway" if gateway_up() else "local node"
+            print(f"{cli}\tinstalled\t{mode}")
+            continue
+        if not binary:
+            print(f"{cli}\tmissing\t")
+            continue
+        label = auth_label(cli, binary)
+        hint = hints.get(cli, "")
+        if hint == "signed-out" and label != "signed-in":
+            label = "signed-out"
+        elif label in ("unknown", "") and hint:
+            label = hint
+        print(f"{cli}\tinstalled\t{label}")
+    for cli in HTTP_ALLOWED:
+        label = http_auth(cli, "")
+        installed = "installed" if label == "signed-in" else "missing"
+        print(f"{cli}\t{installed}\t{label}")
+
+
+def argv_for(
+    cli: str,
+    binary: str,
+    model: str,
+    prompt: str,
+    prompt_file: str | None = None,
+    via_gateway: bool = False,
+) -> list[str]:
     m = (model or "").strip()
     if cli == "claude":
         cmd = [binary, "-p", "--output-format", "text"]
@@ -37,7 +365,7 @@ def argv_for(cli: str, binary: str, model: str, prompt: str) -> list[str]:
         cmd += ["--", prompt]
         return cmd
     if cli == "codex":
-        cmd = [binary, "exec"]
+        cmd = [binary, "exec", "--skip-git-repo-check"]
         if m:
             cmd += ["--model", m]
         cmd += ["--", prompt]
@@ -48,16 +376,31 @@ def argv_for(cli: str, binary: str, model: str, prompt: str) -> list[str]:
             cmd += ["--model", m]
         cmd += ["--output-format", "plain"]
         return cmd
-    if cli == "gemini":
-        cmd = [binary, "-p", prompt]
+    if cli == "antigravity":
+        cmd = [binary, "--output-format", "text"]
         if m:
-            cmd += ["-m", m]
+            cmd += ["--model", m]
+        cmd += ["--print", prompt]
         return cmd
     if cli == "cursor":
         cmd = [binary, "-p", "--output-format", "text"]
         if m:
-            cmd += ["-m", m]
+            cmd += ["--model", m]
         cmd += ["--", prompt]
+        return cmd
+    if cli == "openclaw":
+        src = prompt_file or prompt
+        if via_gateway:
+            cmd = [binary, "agent", "--message-file", src]
+        else:
+            cmd = [binary, "agent", "exec", "--message-file", src]
+        if m:
+            cmd += ["--model", m]
+        return cmd
+    if cli == "hermes":
+        cmd = [binary, "chat", "--oneshot", "--query-file", prompt_file or prompt]
+        if m:
+            cmd += ["-m", m]
         return cmd
     raise SystemExit(f"unknown cli: {cli}")
 
@@ -68,33 +411,61 @@ def main() -> int:
     p.add_argument("--model", default="")
     p.add_argument("--timeout", type=int, default=90)
     p.add_argument("--prompt-file")
+    p.add_argument("--endpoint", default="")
     p.add_argument(
         "--discover",
         action="store_true",
         help="Print CLIs whose binaries are on PATH, one per line.",
     )
+    p.add_argument(
+        "--status",
+        action="store_true",
+        help="Print cli, installed|missing, auth label. No secrets.",
+    )
+    p.add_argument(
+        "--models",
+        action="store_true",
+        help="Print cli, model id, label from each provider. No secrets.",
+    )
     args = p.parse_args()
 
     if args.discover:
-        for cli in ALLOWED:
+        for cli in CLI_ALLOWED:
             if resolve(cli):
+                print(cli)
+        for cli in HTTP_ALLOWED:
+            if http_auth(cli, "") == "signed-in":
                 print(cli)
         return 0
 
-    if not args.cli or not args.prompt_file:
-        p.error("--cli and --prompt-file are required unless --discover")
+    if args.status:
+        print_status()
+        return 0
 
-    binary = resolve(args.cli)
-    if not binary:
-        print(f"missing:{args.cli}", file=sys.stderr)
-        return 2
+    if args.models:
+        print_models()
+        return 0
+
+    if not args.cli or not args.prompt_file:
+        p.error("--cli and --prompt-file are required unless --discover or --status")
 
     prompt = open(args.prompt_file, encoding="utf-8").read()
     if len(prompt.encode()) > 32 * 1024:
         print("prompt too large (32KiB cap)", file=sys.stderr)
         return 3
 
-    cmd = argv_for(args.cli, binary, args.model, prompt)
+    if args.cli in HTTP_ALLOWED:
+        text = http_complete(args.cli, args.endpoint, args.model, prompt, args.timeout)
+        sys.stdout.write(text)
+        return 0
+
+    binary = resolve(args.cli)
+    if not binary:
+        print(f"missing:{args.cli}", file=sys.stderr)
+        return 2
+
+    via_gateway = args.cli == "openclaw" and gateway_up()
+    cmd = argv_for(args.cli, binary, args.model, prompt, args.prompt_file, via_gateway)
     env = os.environ.copy()
     env["TERM"] = "dumb"
     started = time.monotonic()
@@ -103,6 +474,7 @@ def main() -> int:
             cmd,
             capture_output=True,
             text=True,
+            stdin=subprocess.DEVNULL,
             timeout=args.timeout,
             cwd=os.path.expanduser("~"),
             env=env,

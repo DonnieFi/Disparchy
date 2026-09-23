@@ -1,0 +1,276 @@
+const fs = require("fs")
+const path = require("path")
+const vm = require("vm")
+
+const src = fs.readFileSync(path.join(__dirname, "Model.js"), "utf8")
+const M = {}
+vm.createContext(M)
+vm.runInContext(src, M)
+
+function eq(actual, expected, name) {
+    const a = JSON.stringify(actual)
+    const e = JSON.stringify(expected)
+    if (a !== e) throw new Error(name + " expected " + e + " got " + a)
+}
+
+function is(cond, name) {
+    if (!cond) throw new Error(name)
+}
+
+const available = [
+    { id: "claude", label: "Claude", defaultModel: "sonnet" },
+    { id: "codex", label: "Codex", defaultModel: "" },
+    { id: "grok", label: "Grok", defaultModel: "" }
+]
+
+eq(M.emptySelection(), { models: {} }, "emptySelection")
+
+eq(
+    M.parseSelection('{"models":{"claude":"sonnet","codex":""}}'),
+    { models: { claude: ["sonnet"], codex: [""] } },
+    "legacy string parse"
+)
+
+eq(
+    M.parseSelection('{"models":{"claude":["opus","sonnet","opus"],"mystery":["x"]}}'),
+    { models: { claude: ["opus", "sonnet"] } },
+    "array parse drops unknown and dedupes"
+)
+
+eq(
+    M.parseSelection('{"clis":["claude"],"models":{"claude":"opus","grok":"grok-4.6"}}'),
+    { models: { claude: ["opus"] } },
+    "legacy clis filter drops unlisted"
+)
+
+eq(
+    M.parseSelection('{"clis":["claude","not-a-cli"]}'),
+    { models: { claude: [""] } },
+    "legacy clis without models seeds empty string"
+)
+
+eq(
+    M.parseSelection('{"clis":[],"models":{"grok":["grok-4.6"]}}'),
+    { models: { grok: ["grok-4.6"] } },
+    "empty clis is not a filter"
+)
+
+eq(M.parseSelection("not-json"), { models: {} }, "invalid json")
+
+const wire = M.serializeSelection({
+    clis: ["claude"],
+    models: { claude: ["sonnet", "opus"], grok: [], mystery: ["x"] }
+})
+const written = JSON.parse(wire)
+eq(written, { models: { claude: ["sonnet", "opus"] } }, "serialize omits clis and empty")
+is(!Object.prototype.hasOwnProperty.call(written, "clis"), "serialize has no clis key")
+is(wire.endsWith("\n"), "serialize trailing newline")
+
+const start = { models: { claude: ["sonnet"] } }
+eq(
+    M.toggleModel(start, "claude", "opus"),
+    { models: { claude: ["sonnet", "opus"] } },
+    "toggle adds"
+)
+eq(start, { models: { claude: ["sonnet"] } }, "toggle does not mutate input")
+eq(
+    M.toggleModel({ models: { claude: ["sonnet", "opus"] } }, "claude", "sonnet"),
+    { models: { claude: ["opus"] } },
+    "toggle removes one"
+)
+eq(
+    M.toggleModel({ models: { claude: ["opus"] } }, "claude", "opus"),
+    { models: {} },
+    "last-off deletes key"
+)
+eq(
+    M.toggleModel({ models: { claude: ["sonnet"] } }, "claude", "opus", true),
+    { models: { claude: ["sonnet", "opus"] } },
+    "toggle on"
+)
+eq(
+    M.toggleModel({ models: { claude: ["sonnet"] } }, "claude", "sonnet", false),
+    { models: {} },
+    "toggle off"
+)
+eq(
+    M.toggleModel({ models: { claude: ["sonnet"] } }, "claude", "sonnet", true),
+    { models: { claude: ["sonnet"] } },
+    "toggle on is idempotent"
+)
+
+is(M.isArmed({ models: { claude: ["sonnet"] } }, "claude") === true, "isArmed true")
+is(M.isChecked({ models: { claude: ["sonnet"] } }, "claude") === true, "isChecked alias")
+is(M.isArmed({ models: {} }, "claude") === false, "isArmed false")
+is(M.modelsChecked({ models: { claude: ["", "opus"] } }, "claude", "") === true, "empty model is checkable")
+is(M.modelsChecked({ models: { claude: ["opus"] } }, "claude", "sonnet") === false, "modelsChecked miss")
+
+const jobs = M.expandJobs(
+    { models: { claude: ["sonnet", "opus"], grok: [""], cursor: ["auto"] } },
+    available
+)
+eq(
+    jobs.map(function (j) { return { cli: j.cli, model: j.model } }),
+    [
+        { cli: "claude", model: "sonnet" },
+        { cli: "claude", model: "opus" },
+        { cli: "grok", model: "" }
+    ],
+    "expandJobs multi-model available order skips missing PATH"
+)
+eq(jobs[2].key, M.targetKey("grok", ""), "expandJobs empty model key")
+
+const run = {
+    id: "r1",
+    startedAt: "t",
+    prompt: "hi",
+    targets: [
+        { cli: "claude", model: "sonnet", status: "pending", elapsedMs: 0, answer: "", error: "", exitCode: "", stdoutBytes: 0, stderrBytes: 0 },
+        { cli: "claude", model: "opus", status: "pending", elapsedMs: 0, answer: "", error: "", exitCode: "", stdoutBytes: 0, stderrBytes: 0 }
+    ]
+}
+const patched = M.updateTarget(run, "claude", "opus", { status: "done", answer: "ok", elapsedMs: 12 })
+eq(patched.targets[0].status, "pending", "updateTarget leaves sibling")
+eq(patched.targets[1].status, "done", "updateTarget matches pair")
+eq(patched.targets[1].answer, "ok", "updateTarget patch answer")
+eq(patched.targets[1].model, "opus", "updateTarget keeps identity")
+const missed = M.updateTarget(run, "claude", "haiku", { status: "done" })
+is(missed === run, "updateTarget no match returns same run")
+const oldCall = M.updateTarget(run, "claude", { status: "done" })
+is(oldCall === run, "updateTarget cli-only call does not smash")
+
+eq(
+    M.claimNext(run, {}),
+    { cli: "claude", model: "sonnet", key: M.targetKey("claude", "sonnet") },
+    "claimNext first pending"
+)
+eq(
+    M.claimNext(run, { [M.targetKey("claude", "sonnet")]: true }),
+    { cli: "claude", model: "opus", key: M.targetKey("claude", "opus") },
+    "claimNext skips object runningKeys"
+)
+eq(
+    M.claimNext(run, new Set([M.targetKey("claude", "sonnet"), M.targetKey("claude", "opus")])),
+    null,
+    "claimNext exhausted Set"
+)
+const mixed = {
+    id: "r2",
+    targets: [
+        { cli: "grok", model: "", status: "done" },
+        { cli: "claude", model: "sonnet", status: "pending" }
+    ]
+}
+eq(
+    M.claimNext(mixed, {}),
+    { cli: "claude", model: "sonnet", key: M.targetKey("claude", "sonnet") },
+    "claimNext skips non-pending"
+)
+
+eq(
+    M.seedIfEmpty({ models: {} }, available, { modelClaude: "haiku" }),
+    { models: { claude: ["haiku"], codex: [""], grok: [""] } },
+    "seedIfEmpty fills available"
+)
+eq(
+    M.seedIfEmpty({ models: { claude: ["opus"] } }, available, { modelClaude: "haiku" }),
+    { models: { claude: ["opus"] } },
+    "seedIfEmpty no-op when available is armed"
+)
+eq(
+    M.seedIfEmpty({ models: { cursor: ["auto"] } }, available, { modelClaude: "sonnet" }),
+    { models: { cursor: ["auto"], claude: ["sonnet"], codex: [""], grok: [""] } },
+    "seedIfEmpty when armed cli is not available"
+)
+
+const created = M.newRun("hello", [
+    { cli: "claude", model: "sonnet" },
+    { cli: "claude", model: "" }
+])
+is(typeof created.id === "string" && created.id.length > 0, "newRun id")
+is(typeof created.startedAt === "string" && created.startedAt.length > 0, "newRun startedAt")
+eq(created.prompt, "hello", "newRun prompt")
+eq(
+    created.targets,
+    [
+        { cli: "claude", model: "sonnet", status: "pending", elapsedMs: 0, answer: "", error: "", exitCode: "", stdoutBytes: 0, stderrBytes: 0 },
+        { cli: "claude", model: "", status: "pending", elapsedMs: 0, answer: "", error: "", exitCode: "", stdoutBytes: 0, stderrBytes: 0 }
+    ],
+    "newRun pending targets"
+)
+
+eq(M.targetKey("claude", "sonnet"), "claude\x1fsonnet", "targetKey")
+eq(M.jobKey("claude", ""), "claude\x1f", "jobKey empty model")
+eq(M.statusFromExit(0, ""), "done", "statusFromExit done")
+eq(M.statusFromExit(124, ""), "timeout", "statusFromExit timeout code")
+eq(M.statusFromExit(1, "timeout"), "timeout", "statusFromExit timeout stderr")
+eq(M.statusFromExit(1, "boom"), "failed", "statusFromExit failed")
+
+is(M.isEnabled({ models: {} }, "claude") === true, "builtin claude shown")
+is(M.isEnabled({ models: {} }, "ollama") === false, "ollama hidden until enabled")
+eq(
+    M.toggleEnabled({ models: { claude: ["sonnet"] } }, "ollama", true).enabled,
+    ["claude", "codex", "grok", "antigravity", "cursor", "ollama"],
+    "toggleEnabled keeps the builtin five"
+)
+eq(
+    M.endpointFor({ models: {} }, "ollama"),
+    "http://127.0.0.1:11434",
+    "ollama default endpoint"
+)
+eq(
+    M.setEndpoint({ models: {} }, "ollama", "http://10.0.0.8:11434").endpoints.ollama,
+    "http://10.0.0.8:11434",
+    "setEndpoint stores a url"
+)
+eq(M.modelsFor("codex").length, 1, "codex waits for a live catalog")
+eq(M.modelsFor("hermes")[0].label, "Hermes default", "hermes names its default")
+eq(
+    M.modelsFor("codex", [{ value: "gpt-6-sol", label: "GPT-6-Sol" }])[1],
+    { value: "gpt-6-sol", label: "GPT-6-Sol" },
+    "live catalog replaces the stale list"
+)
+eq(M.setEndpoint({ models: {} }, "claude", "http://nope").endpoints, undefined, "cli ignores endpoint")
+eq(M.setAutoPaste({ models: {} }, true), { models: {}, autoPaste: true }, "autoPaste on")
+eq(M.setAutoPaste({ models: {}, autoPaste: true }, false), { models: {} }, "autoPaste off")
+eq(
+    M.toggleCli(M.setAutoPaste({ models: {} }, true), "claude", true, {}),
+    { models: { claude: ["sonnet"] }, autoPaste: true },
+    "toggleCli keeps autoPaste"
+)
+eq(
+    M.parseSelection('{"models":{},"autoPaste":true}'),
+    { models: {}, autoPaste: true },
+    "parse autoPaste"
+)
+eq(M.estimateTokens(""), 0, "empty text is zero tokens")
+eq(M.estimateTokens("hello"), 2, "five chars round up to two tokens")
+eq(
+    M.runTokens({
+        prompt: "hello",
+        targets: [
+            { answer: "12345678" },
+            { answer: "" }
+        ]
+    }),
+    { prompt: 2, answers: 2, total: 4 },
+    "run tokens add prompt and answers"
+)
+eq(
+    M.historyTokens([
+        { prompt: "hello", targets: [{ answer: "12345678" }] },
+        { prompt: "abcd", targets: [{ answer: "abcd" }] }
+    ]),
+    { prompt: 3, answers: 3, total: 6 },
+    "history tokens sum every saved run"
+)
+eq(
+    M.tokenFooter(
+        { prompt: "hello", targets: [{ answer: "12345678" }] },
+        [{ prompt: "hello", targets: [{ answer: "12345678" }] }]
+    ),
+    "in 2  ·  out 2  ·  ≈ 4 this run  ·  ≈ 4 saved",
+    "token footer"
+)
+
+process.stdout.write("ok\n")

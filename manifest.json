@@ -2,23 +2,28 @@
   "schemaVersion": 1,
   "id": "dkfiander.disparchy",
   "name": "Disparchy",
-  "version": "0.1.0",
+  "version": "0.3.1",
   "author": "Donnie Fiander",
   "license": "MIT",
-  "description": "Hotkey overlay: paste or type a prompt, pick CLI+model targets, fire in parallel, keep history.",
+  "description": "Google-bar hangdown: one prompt line, provider checkboxes, parallel local AI CLIs.",
   "homepage": "https://github.com/DonnieFi/Disparchy",
   "repository": "https://github.com/DonnieFi/Disparchy",
-  "kinds": ["bar-widget", "overlay"],
-  "keepLoaded": true,
+  "kinds": [
+    "bar-widget"
+  ],
   "entryPoints": {
-    "barWidget": "BarWidget.qml",
-    "overlay": "Overlay.qml"
+    "barWidget": "BarWidget.qml"
   },
   "barWidget": {
     "displayName": "Disparchy",
-    "description": "Dispatch one prompt to multiple local AI CLIs.",
+    "description": "One prompt, checkbox providers, parallel local AI CLIs.",
     "category": "AI",
-    "aliases": ["disparchy", "dispatch", "mux", "ask"],
+    "aliases": [
+      "disparchy",
+      "dispatch",
+      "mux",
+      "ask"
+    ],
     "allowMultiple": false,
     "defaultSection": "right",
     "defaults": {
@@ -27,7 +32,7 @@
       "modelClaude": "sonnet",
       "modelCodex": "",
       "modelGrok": "",
-      "modelGemini": "",
+      "modelAntigravity": "",
       "modelCursor": ""
     },
     "schema": [
@@ -68,9 +73,9 @@
         "defaultValue": ""
       },
       {
-        "key": "modelGemini",
+        "key": "modelAntigravity",
         "type": "string",
-        "label": "Default Gemini model (empty = CLI default)",
+        "label": "Default Antigravity model (empty = CLI default)",
         "defaultValue": ""
       },
       {
