@@ -1511,7 +1511,7 @@ Panel {
                                 anchors.leftMargin: Style.space(12)
                                 spacing: Style.space(3)
                                 Text {
-                                    text: "AUTO-PASTE CLIPBOARD"
+                                    text: "Auto-paste clipboard"
                                     color: root.ink
                                     font.family: root.fontFamily
                                     font.pixelSize: Style.font.bodySmall
