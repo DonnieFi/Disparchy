@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import Quickshell
 import Quickshell.Io
 import qs.Commons
@@ -821,6 +822,7 @@ Panel {
                 spacing: Style.space(8)
 
                 Column {
+                    id: headerCol
                     width: parent.width
                     spacing: Style.space(8)
 
@@ -1165,7 +1167,7 @@ Panel {
 
                 Item {
                     width: parent.width
-                    height: root.setupOpen ? setupCol.implicitHeight
+                    height: root.setupOpen ? setupView.height
                         : (root.historyOpen ? histCol.implicitHeight
                             : providerFlow.y + providerFlow.height
                                 + (root.menuCli !== "" ? modelMenu.height + Style.space(4) : 0))
@@ -1276,9 +1278,29 @@ Panel {
                         }
                     }
 
-                    Column {
-                        id: setupCol
+                    Flickable {
+                        id: setupView
                         visible: root.setupOpen
+                        width: parent.width
+                        height: Math.min(setupCol.implicitHeight, room)
+                        contentWidth: width
+                        contentHeight: setupCol.implicitHeight
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
+                        flickableDirection: Flickable.VerticalFlick
+                        onVisibleChanged: if (visible) contentY = 0
+
+                        readonly property real room: {
+                            var content = setupCol.implicitHeight
+                            if (!(panel.availableCardHeight > 0))
+                                return content
+                            var inner = panel.availableCardHeight - panel.verticalContentInset
+                            var chrome = headerCol.implicitHeight + body.spacing
+                            return Math.max(0, inner - chrome)
+                        }
+
+                        Column {
+                        id: setupCol
                         width: parent.width
                         spacing: Style.space(10)
 
@@ -1589,6 +1611,21 @@ Panel {
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: root.setAutoPaste(!Model.autoPasteOn(root.selection))
                                 }
+                            }
+                        }
+                    }
+
+                        ScrollBar.vertical: ScrollBar {
+                            policy: setupView.contentHeight > setupView.height
+                                ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+                            width: Style.space(4)
+                            contentItem: Rectangle {
+                                implicitWidth: Style.space(4)
+                                radius: width / 2
+                                color: root.dim
+                            }
+                            background: Rectangle {
+                                color: "transparent"
                             }
                         }
                     }
