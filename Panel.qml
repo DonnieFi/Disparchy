@@ -1604,19 +1604,27 @@ Panel {
                             }
                         }
                     }
+                    }
 
-                        ScrollBar.vertical: ScrollBar {
-                            policy: setupView.contentHeight > setupView.height
-                                ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
-                            width: Style.space(4)
-                            contentItem: Rectangle {
-                                implicitWidth: Style.space(4)
-                                radius: width / 2
-                                color: root.dim
-                            }
-                            background: Rectangle {
-                                color: "transparent"
-                            }
+                    ScrollBar {
+                        orientation: Qt.Vertical
+                        padding: 0
+                        width: Style.space(4)
+                        height: setupView.height
+                        x: setupView.x + setupView.width + (panel.padding - width) / 2
+                        y: setupView.y
+                        policy: root.setupOpen && setupView.contentHeight > setupView.height
+                            ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+                        size: setupView.visibleArea.heightRatio
+                        position: setupView.visibleArea.yPosition
+                        onPositionChanged: if (pressed) setupView.contentY = position * setupView.contentHeight
+                        contentItem: Rectangle {
+                            implicitWidth: Style.space(4)
+                            radius: width / 2
+                            color: root.dim
+                        }
+                        background: Rectangle {
+                            color: "transparent"
                         }
                     }
 
