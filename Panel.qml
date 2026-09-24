@@ -101,11 +101,11 @@ Panel {
         return "One prompt. The checked providers answer together."
     }
     readonly property string headerStatus: {
-        if (inFlight > 0) return inFlight + " RUNNING"
-        if (setupOpen) return "SETUP"
-        if (historyOpen) return history.length + " SAVED"
-        if (armedCount === 0) return "IDLE"
-        return armedCount + " ARMED"
+        if (inFlight > 0) return inFlight + " running"
+        if (setupOpen) return "Setup"
+        if (historyOpen) return history.length + " saved"
+        if (armedCount === 0) return "Idle"
+        return armedCount + " armed"
     }
     readonly property color headerTint: inFlight > 0 || setupOpen ? Color.accent : ink
     readonly property bool canSend: promptText.trim().length > 0
@@ -831,12 +831,11 @@ Panel {
                                     busy: root.inFlight > 0
                                 }
                                 Text {
-                                    text: "DISPARCHY"
+                                    text: "Disparchy"
                                     color: root.ink
                                     font.family: root.fontFamily
                                     font.pixelSize: Style.font.body
                                     font.bold: true
-                                    font.letterSpacing: 2.5
                                     anchors.verticalCenter: parent.verticalCenter
                                 }
                                 Text {
@@ -944,12 +943,11 @@ Panel {
                             anchors.top: parent.top
                             anchors.margins: Style.space(10)
                             textFormat: Text.PlainText
-                            text: root.viewingPast ? "SAVED PROMPT" : "YOUR PROMPT"
+                            text: root.viewingPast ? "Saved prompt" : "Your prompt"
                             color: Color.accent
                             font.family: root.fontFamily
                             font.pixelSize: Style.font.caption
                             font.bold: true
-                            font.letterSpacing: 1.2
                         }
 
                         Text {
@@ -1166,12 +1164,11 @@ Panel {
                         id: providerLabel
                         visible: !root.setupOpen && !root.historyOpen
                         height: visible ? implicitHeight : 0
-                        text: "SEND TO"
+                        text: "Send to"
                         color: root.dim
                         font.family: root.fontFamily
                         font.pixelSize: Style.font.caption
                         font.bold: true
-                        font.letterSpacing: 1.2
                     }
 
                     Flow {
@@ -1276,12 +1273,11 @@ Panel {
                         spacing: Style.space(10)
 
                         Text {
-                            text: "PROVIDERS"
+                            text: "Providers"
                             color: root.dim
                             font.family: root.fontFamily
                             font.pixelSize: Style.font.caption
                             font.bold: true
-                            font.letterSpacing: 1.2
                         }
 
                         Grid {
@@ -1494,12 +1490,11 @@ Panel {
                         }
 
                         Text {
-                            text: "PREFERENCES"
+                            text: "Preferences"
                             color: root.dim
                             font.family: root.fontFamily
                             font.pixelSize: Style.font.caption
                             font.bold: true
-                            font.letterSpacing: 1.2
                         }
 
                         Rectangle {
@@ -1569,12 +1564,11 @@ Panel {
                             Text {
                                 anchors.left: parent.left
                                 anchors.verticalCenter: parent.verticalCenter
-                                text: "SAVED COMPARISONS"
+                                text: "Saved comparisons"
                                 color: root.dim
                                 font.family: root.fontFamily
                                 font.pixelSize: Style.font.caption
                                 font.bold: true
-                                font.letterSpacing: 1.2
                             }
                             Text {
                                 anchors.right: parent.right
