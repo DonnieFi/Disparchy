@@ -1793,10 +1793,40 @@ Panel {
 
                 }
 
-                Row {
-                    width: parent.width
+                Flickable {
+                    id: resultView
                     visible: !root.setupOpen && root.displayRun && root.displayRun.targets && root.displayRun.targets.length > 0
-                    spacing: Style.space(8)
+                    width: parent.width
+                    height: resultRow.implicitHeight
+                    contentWidth: columns.contentWidth
+                    contentHeight: height
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+                    flickableDirection: Flickable.HorizontalFlick
+                    interactive: columns.overflow
+                    onContentWidthChanged: if (contentWidth <= width) contentX = 0
+
+                    readonly property var columns: Model.columnLayout(
+                        width, paper.count, Style.space(8), Style.space(280))
+
+                    // Qt does not turn Shift+wheel into a horizontal delta.
+                    // This handler does, for the card chrome outside the answer lane.
+                    // A touchpad already arrives as a horizontal pixel delta, which
+                    // HorizontalFlick scrolls on its own.
+                    WheelHandler {
+                        acceptedModifiers: Qt.ShiftModifier
+                        orientation: Qt.Vertical
+                        blocking: true
+                        onWheel: function(wheel) {
+                            var dy = wheel.angleDelta.y !== 0 ? wheel.angleDelta.y : wheel.pixelDelta.y
+                            var maxX = Math.max(0, resultView.contentWidth - resultView.width)
+                            resultView.contentX = Math.max(0, Math.min(maxX, resultView.contentX - dy / 120 * 72))
+                        }
+                    }
+
+                    Row {
+                        id: resultRow
+                        spacing: Style.space(8)
 
                     Repeater {
                         id: paper
@@ -1804,7 +1834,7 @@ Panel {
                         delegate: Item {
                             id: resultCard
                             required property var modelData
-                            width: Math.max(Style.space(160), (parent.width - Style.space(8) * (paper.count - 1)) / Math.max(1, paper.count))
+                            width: resultView.columns.width
                             height: cardContent.implicitHeight + Style.space(20)
 
                             readonly property color tint: root.tintFor(modelData.cli)
@@ -1899,6 +1929,20 @@ Panel {
                                     clip: true
                                     interactive: resultCard.expanded && contentHeight > height
                                     boundsBehavior: Flickable.StopAtBounds
+                                    flickableDirection: Flickable.VerticalFlick
+
+                                    // Shift+wheel is still a vertical delta. Take it here, before
+                                    // this lane scrolls, and move the result row instead.
+                                    WheelHandler {
+                                        acceptedModifiers: Qt.ShiftModifier
+                                        orientation: Qt.Vertical
+                                        blocking: true
+                                        onWheel: function(wheel) {
+                                            var dy = wheel.angleDelta.y !== 0 ? wheel.angleDelta.y : wheel.pixelDelta.y
+                                            var maxX = Math.max(0, resultView.contentWidth - resultView.width)
+                                            resultView.contentX = Math.max(0, Math.min(maxX, resultView.contentX - dy / 120 * 72))
+                                        }
+                                    }
 
                                     Text {
                                         id: answerText
@@ -1992,6 +2036,27 @@ Panel {
                                     font.pixelSize: Style.font.caption
                                 }
                             }
+                        }
+                    }
+                    }
+
+                    ScrollBar.horizontal: ScrollBar {
+                        parent: resultView.parent
+                        padding: 0
+                        interactive: false
+                        height: Style.space(4)
+                        width: resultView.width
+                        x: resultView.x
+                        y: resultView.y + resultView.height + (panel.padding - height) / 2
+                        policy: resultView.visible && resultView.columns.overflow
+                            ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+                        contentItem: Rectangle {
+                            implicitHeight: Style.space(4)
+                            radius: height / 2
+                            color: root.dim
+                        }
+                        background: Rectangle {
+                            color: "transparent"
                         }
                     }
                 }
