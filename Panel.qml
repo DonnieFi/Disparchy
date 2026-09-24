@@ -176,7 +176,7 @@ Panel {
         return cli
     }
 
-    function escape() {
+    function handleEscape() {
         var target = Model.escapeTarget(root.clearConfirmOpen, root.menuCli !== "")
         if (target === "confirm") clearConfirm.canceled()
         else if (target === "menu") root.menuCli = ""
@@ -795,7 +795,7 @@ Panel {
             id: keyCatcher
             anchors.fill: parent
             blocked: promptEdit.activeFocus
-            onCloseRequested: root.escape()
+            onCloseRequested: root.handleEscape()
             onTabRequested: function (direction) {
                 if (root.clearConfirmOpen)
                     clearConfirm.selectedIndex = clearConfirm.selectedIndex === 0 ? 1 : 0
@@ -1014,7 +1014,7 @@ Panel {
                             selectedTextColor: root.ink
                             Keys.onPressed: function (event) {
                                 if (event.key === Qt.Key_Escape) {
-                                    root.escape()
+                                    root.handleEscape()
                                     event.accepted = true
                                 } else if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
                                         && !(event.modifiers & Qt.ShiftModifier)) {

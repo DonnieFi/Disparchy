@@ -1,0 +1,7 @@
+module qs.Ui
+KeyboardPanel 1.0 KeyboardPanel.qml
+PanelKeyCatcher 1.0 PanelKeyCatcher.qml
+BorderSurface 1.0 BorderSurface.qml
+ConfirmDialog 1.0 ConfirmDialog.qml
+WidgetButton 1.0 WidgetButton.qml
+IpcHandler 1.0 IpcHandler.qml

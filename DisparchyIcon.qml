@@ -14,11 +14,17 @@ Item {
     implicitHeight: iconSize
 
     Shape {
+        id: mark
         width: 64
         height: 64
         anchors.centerIn: parent
         antialiasing: true
-        preferredRendererType: Shape.CurveRenderer
+        // Qt 6.6+ Shape.CurveRenderer. Qt 6.4 rejects a static binding because
+        // the property does not exist yet, so set it when the type has it.
+        Component.onCompleted: {
+            if (mark["preferredRendererType"] !== undefined && Shape["CurveRenderer"] !== undefined)
+                mark["preferredRendererType"] = Shape["CurveRenderer"]
+        }
         transform: Scale {
             origin.x: 32
             origin.y: 32
