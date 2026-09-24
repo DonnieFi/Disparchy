@@ -320,20 +320,22 @@ function escapeTarget(confirmOpen, menuOpen) {
     return "panel"
 }
 
-// Columns that fit across the result area. 280 and 8 match Style.space at
-// scale 1: two columns need 568, three need 856. Always at least one.
-function resultColumns(panelWidth, providerCount) {
+function resultColumns(panelWidth, providerCount, minWidth, gap) {
     var count = parseInt(providerCount, 10)
     if (!isFinite(count) || count < 1)
         count = 1
+    var min = Number(minWidth)
+    var spacing = Number(gap)
+    if (!isFinite(min) || min <= 0 || !isFinite(spacing) || spacing <= 0)
+        return 1
     var width = Number(panelWidth)
     if (!isFinite(width))
         width = 0
     var cols = 1
-    if (width >= 280 * 2 + 8)
-        cols = 2
-    if (width >= 280 * 3 + 8 * 2)
-        cols = 3
+    for (var n = 2; n <= 3; n++) {
+        if (n * min + (n - 1) * spacing <= width)
+            cols = n
+    }
     if (cols > count)
         cols = count
     return cols

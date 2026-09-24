@@ -1821,7 +1821,8 @@ Panel {
                         return Math.max(0, inner - chrome)
                     }
 
-                    readonly property int columns: Model.resultColumns(width, paper.count)
+                    readonly property int columns: Model.resultColumns(
+                        width, paper.count, Style.space(280), Style.space(8))
 
                     Grid {
                         id: resultGrid
