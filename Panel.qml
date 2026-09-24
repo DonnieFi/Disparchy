@@ -22,6 +22,8 @@ Panel {
     property bool setupOpen: false
     property string pluginVersion: ""
     property string menuCli: ""
+    // Assigned only when the panel opens, a run is sent, or a past run is opened.
+    property int widthCount: 1
     property var selection: Model.emptySelection()
     property var auth: ({})
     property var available: []
@@ -65,8 +67,8 @@ Panel {
     readonly property real horizontalInsets: panel.padding * 2
         + Border.left(panel.borderSpec) + Border.right(panel.borderSpec)
     readonly property int hangWidth: Math.round(Model.panelWidth(
-        armedCount, panel.availableCardWidth,
-        Style.space(520), Style.space(280), Style.space(8), horizontalInsets))
+        widthCount, panel.availableCardWidth,
+        Style.space(680), Style.space(280), Style.space(8), horizontalInsets))
     readonly property int lineHeight: Style.space(28)
     readonly property int actionRadius: Style.space(9)
 
@@ -128,7 +130,18 @@ Panel {
         return Color.accent
     }
 
+    function shownRunCount() {
+        var run = root.displayRun
+        if (!run || !run.targets) return 0
+        return run.targets.length
+    }
+
+    function latchWidth() {
+        root.widthCount = Model.widthCount(root.armedCount, root.shownRunCount())
+    }
+
     function open() {
+        var opening = !root.opened
         root.viewingRunId = ""
         root.historyOpen = false
         root.setupOpen = false
@@ -137,6 +150,8 @@ Panel {
         root.refreshModels()
         historyFile.reload()
         selectionFile.reload()
+        if (opening)
+            root.latchWidth()
         root.controller.show()
         root.pullClipboard()
         Qt.callLater(function () { promptEdit.forceActiveFocus() })
@@ -469,6 +484,7 @@ Panel {
         if (jobs.length === 0) return
         var run = Model.newRun(root.promptText, jobs)
         root.liveRun = run
+        root.latchWidth()
         root.history = Model.upsertRun(root.history, run, root.historyMaxRuns)
         root.saveHistory()
         promptFile.setText(root.promptText)
@@ -1715,6 +1731,7 @@ Panel {
                                     onClicked: {
                                         root.viewingRunId = runId
                                         root.historyOpen = false
+                                        root.latchWidth()
                                     }
                                 }
                             }
