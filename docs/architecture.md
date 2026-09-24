@@ -10,6 +10,8 @@ This document is the contract between `Panel.qml`, `Model.js`, and `bin/disparch
 
 `~/.config/omarchy/plugins/dkfiander.disparchy/`
 
+After installing or updating, run `omarchy-restart-shell`.
+
 **Runtime state:**
 
 `$XDG_STATE_HOME/omarchy/dkfiander.disparchy/`
