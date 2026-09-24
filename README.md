@@ -20,6 +20,14 @@ Repo: [DonnieFi/Disparchy](https://github.com/DonnieFi/Disparchy) · Architectur
 
 ---
 
+## See it in motion
+
+![Disparchy demo cycling through Ask, comparison results, Setup, History, and a selected saved run](docs/media/disparchy-demo.gif)
+
+This short visual tour uses sample prompts and provider states. The [GIF file](docs/media/disparchy-demo.gif) is ready to share.
+
+---
+
 ## The idea
 
 You keep one prompt. Each checked provider runs on its own with its own model, and a failure in one column leaves the others running. The Ask screen gives the prompt room, with Clear above Send and Cancel taking Send’s place while a run is active.
