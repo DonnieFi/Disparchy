@@ -788,7 +788,9 @@ Panel {
             anchors.fill: parent
             blocked: promptEdit.activeFocus || root.openPickers > 0
             onCloseRequested: {
-                if (root.clearConfirmOpen) clearConfirm.canceled()
+                var target = Model.escapeTarget(root.clearConfirmOpen, root.menuCli !== "")
+                if (target === "confirm") clearConfirm.canceled()
+                else if (target === "menu") root.menuCli = ""
                 else root.close()
             }
             onTabRequested: function (direction) {
@@ -1008,7 +1010,10 @@ Panel {
                             selectedTextColor: root.ink
                             Keys.onPressed: function (event) {
                                 if (event.key === Qt.Key_Escape) {
-                                    root.close()
+                                    var target = Model.escapeTarget(root.clearConfirmOpen, root.menuCli !== "")
+                                    if (target === "confirm") clearConfirm.canceled()
+                                    else if (target === "menu") root.menuCli = ""
+                                    else root.close()
                                     event.accepted = true
                                 } else if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
                                         && !(event.modifiers & Qt.ShiftModifier)) {
