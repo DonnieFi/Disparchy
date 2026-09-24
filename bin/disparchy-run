@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One-shot runner for Disparchy. No secrets. No shell interpolation."""
+"""One-shot runner for Disparchy. Reads an OpenClaw or Hermes bearer key from auth.json and refuses that file if it is a symlink or readable by group or others. Never writes secrets. No shell interpolation."""
 from __future__ import annotations
 
 import argparse
@@ -499,12 +499,12 @@ def main() -> int:
     p.add_argument(
         "--status",
         action="store_true",
-        help="Print cli, installed|missing, auth label. No secrets.",
+        help="Print cli, installed|missing, auth label. Does not print API keys.",
     )
     p.add_argument(
         "--models",
         action="store_true",
-        help="Print cli, model id, label from each provider. No secrets.",
+        help="Print cli, model id, label from each provider. Does not print API keys.",
     )
     args = p.parse_args()
 

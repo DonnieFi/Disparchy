@@ -14,14 +14,14 @@ This document is the contract between `Panel.qml`, `Model.js`, and `bin/disparch
 
 `$XDG_STATE_HOME/omarchy/dkfiander.disparchy/`
 
-Usually `~/.local/state/omarchy/dkfiander.disparchy/`. Directory mode `0700`. Files mode `0600`.
+Usually `~/.local/state/omarchy/dkfiander.disparchy/`. The panel sets this directory to mode `0700` and the files in it to mode `0600`. The Security section describes the first save.
 
 State stays out of the plugin tree. The shell watches that tree and reloads QML on every write.
 
 | File | Purpose |
 |------|---------|
 | `selection.json` | Armed models, enabled providers, HTTP URLs, `autoPaste` |
-| `auth.json` | API keys for OpenClaw and Hermes. Mode `0600`. A group or world readable file is refused |
+| `auth.json` | API keys for OpenClaw and Hermes. The runner refuses a symlink or a file readable by group or others |
 | `history.json` | Past runs, capped by `historyMaxRuns` |
 | `prompt.txt` | Prompt for the current send. The runner reads this file |
 | `status.json` | Last provider probe. The panel rewrites it |
@@ -112,6 +112,6 @@ One failure does not cancel its siblings.
 
 ## Security
 
-The plugin is unsandboxed code in `omarchy-shell`. It stores no provider tokens. It never passes `--force`, `--yolo`, `--always-approve`, or `--dangerously-skip-permissions`.
+The plugin is unsandboxed code in `omarchy-shell`. API keys for OpenClaw and Hermes are stored in `auth.json` in the state folder (`$XDG_STATE_HOME/omarchy/dkfiander.disparchy/`, default `~/.local/state/omarchy/dkfiander.disparchy/`). They are never written into the plugin folder. The first save creates that file at the process umask, usually `0644`. A later atomic rewrite keeps the mode the file already has, so a file that is already `0600` stays `0600`. After saving, the plugin sets the state files to mode `0600`, and the runner refuses to read `auth.json` if it is a symlink or readable by group or others. The panel also sets the state folder to mode `0700`, including when that folder already exists with a wider mode. A save can create the folder through Quickshell before that step, at the normal directory mode, usually `0755`. Parent directories are not changed. Once the state folder is `0700`, other users cannot reach `auth.json` during the window when the file is still `0644`. The plugin never passes `--force`, `--yolo`, `--always-approve`, or `--dangerously-skip-permissions`.
 
 Sign-in is `xdg-terminal-exec --hold --title=Disparchy --` plus the CLI login command. HTTP providers have no login launch.
