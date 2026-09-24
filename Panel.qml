@@ -163,16 +163,6 @@ Panel {
         return cli
     }
 
-    function setupGroup(wantEndpoint) {
-        var list = Model.cliList()
-        var out = []
-        for (var i = 0; i < list.length; i++) {
-            var endpoint = Model.needsEndpoint(list[i].id)
-            if (wantEndpoint ? endpoint : !endpoint) out.push(list[i])
-        }
-        return out
-    }
-
     function notePicker(open) {
         root.openPickers = Math.max(0, root.openPickers + (open ? 1 : -1))
     }
@@ -1526,7 +1516,7 @@ Panel {
                             }
 
                             Repeater {
-                                model: root.setupGroup(false)
+                                model: Model.setupGroup(false)
                                 delegate: setupCardDelegate
                             }
                         }
@@ -1547,7 +1537,7 @@ Panel {
                             rowSpacing: Style.space(10)
 
                             Repeater {
-                                model: root.setupGroup(true)
+                                model: Model.setupGroup(true)
                                 delegate: setupCardDelegate
                             }
                         }

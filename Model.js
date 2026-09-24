@@ -304,6 +304,16 @@ function needsEndpoint(cli) {
     return !!(row && (row.transport === "http" || row.auth))
 }
 
+function setupGroup(wantEndpoint) {
+    var list = cliList()
+    var out = []
+    var want = !!wantEndpoint
+    for (var i = 0; i < list.length; i++) {
+        if (needsEndpoint(list[i].id) === want) out.push(list[i])
+    }
+    return out
+}
+
 function needsSecret(cli) {
     var row = providerOf(cli)
     return !!(row && row.auth)
