@@ -854,7 +854,7 @@ Panel {
                                 text: root.headerHint
                                 color: root.dim
                                 font.family: root.fontFamily
-                                font.pixelSize: 11
+                                font.pixelSize: Style.font.bodySmall
                                 elide: Text.ElideRight
                             }
                         }
@@ -883,7 +883,7 @@ Panel {
                                     text: root.headerStatus
                                     color: root.ink
                                     font.family: root.fontFamily
-                                    font.pixelSize: 9
+                                    font.pixelSize: Style.font.caption
                                     font.bold: true
                                 }
                             }
@@ -1240,19 +1240,27 @@ Panel {
                                 }
 
                                 MouseArea {
-                                    anchors.fill: parent
+                                    id: armHit
+                                    anchors.left: parent.left
+                                    anchors.top: parent.top
+                                    anchors.bottom: parent.bottom
+                                    anchors.right: providerChip.armed ? modelHit.left : parent.right
                                     enabled: !root.viewingPast && root.inFlight === 0
                                     cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
                                     onClicked: root.toggleProvider(providerChip.modelData.id)
                                 }
 
                                 MouseArea {
+                                    id: modelHit
+                                    z: 1
                                     visible: providerChip.armed
                                     enabled: visible && !root.viewingPast && root.inFlight === 0
                                     anchors.right: parent.right
                                     anchors.top: parent.top
                                     anchors.bottom: parent.bottom
-                                    width: modelArrow.implicitWidth + Style.space(12)
+                                    width: providerChip.armed
+                                        ? Math.max(Style.space(36), modelArrow.implicitWidth + Style.space(22))
+                                        : 0
                                     cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
                                     onClicked: root.menuCli = root.menuCli === providerChip.modelData.id
                                         ? "" : providerChip.modelData.id
@@ -1841,29 +1849,61 @@ Panel {
                                 }
 
                                 Row {
-                                    spacing: Style.space(10)
+                                    spacing: Style.space(8)
                                     visible: resultCard.modelData.answer !== ""
-                                    Text {
-                                        text: "copy"
-                                        color: root.dim
-                                        font.pixelSize: Style.font.caption
-                                        font.family: root.fontFamily
+
+                                    BorderSurface {
+                                        id: copyBtn
+                                        width: Math.max(Style.space(56), copyLabel.implicitWidth + Style.space(20))
+                                        height: root.lineHeight
+                                        radius: root.actionRadius
+                                        color: Style.controlFill(copyHover.containsMouse, false, root.ink, Color.accent)
+                                        borderSpec: Border.controlSpec("normal", root.ink, Color.accent)
+
+                                        Text {
+                                            id: copyLabel
+                                            anchors.centerIn: parent
+                                            textFormat: Text.PlainText
+                                            text: "Copy"
+                                            color: root.ink
+                                            font.family: root.fontFamily
+                                            font.pixelSize: Style.font.bodySmall
+                                        }
+
                                         MouseArea {
+                                            id: copyHover
                                             anchors.fill: parent
-                                            anchors.margins: -3
+                                            hoverEnabled: true
                                             cursorShape: Qt.PointingHandCursor
                                             onClicked: root.copyAnswer(resultCard.modelData.answer)
                                         }
                                     }
-                                    Text {
+
+                                    BorderSurface {
+                                        id: moreBtn
                                         visible: resultCard.hasMore
-                                        text: resultCard.expanded ? "less" : "more"
-                                        color: resultCard.tint
-                                        font.pixelSize: Style.font.caption
-                                        font.family: root.fontFamily
+                                        width: visible
+                                            ? Math.max(Style.space(56), moreLabel.implicitWidth + Style.space(20))
+                                            : 0
+                                        height: root.lineHeight
+                                        radius: root.actionRadius
+                                        color: Style.controlFill(moreHover.containsMouse, false, root.ink, Color.accent)
+                                        borderSpec: Border.controlSpec("normal", root.ink, Color.accent)
+
+                                        Text {
+                                            id: moreLabel
+                                            anchors.centerIn: parent
+                                            textFormat: Text.PlainText
+                                            text: resultCard.expanded ? "Less" : "More"
+                                            color: root.ink
+                                            font.family: root.fontFamily
+                                            font.pixelSize: Style.font.bodySmall
+                                        }
+
                                         MouseArea {
+                                            id: moreHover
                                             anchors.fill: parent
-                                            anchors.margins: -3
+                                            hoverEnabled: true
                                             cursorShape: Qt.PointingHandCursor
                                             onClicked: root.toggleResultExpand(resultCard.tKey)
                                         }
