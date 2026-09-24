@@ -260,6 +260,15 @@ eq(
 eq(M.estimateTokens(""), 0, "empty text is zero tokens")
 eq(M.estimateTokens("hello"), 2, "five chars round up to two tokens")
 eq(
+    M.markdownForDisplay("**bold** ![chart](https://example.com/chart.png) <IMG src='file:///tmp/p'>"),
+    "**bold** [chart](https://example.com/chart.png) &lt;img src='file:///tmp/p'>",
+    "answer formatting keeps markdown without image loads"
+)
+eq(M.markdownForDisplay("![logo][asset]\n[asset]: https://example.com/logo.svg"),
+    "[logo][asset]\n[asset]: https://example.com/logo.svg", "reference images become links")
+eq(M.externalLinkForDisplay("HTTPS://example.com/x"), "HTTPS://example.com/x", "web links open")
+eq(M.externalLinkForDisplay("file:///tmp/secret"), "", "local links do not open")
+eq(
     M.runTokens({
         prompt: "hello",
         targets: [

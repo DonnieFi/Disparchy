@@ -64,17 +64,28 @@ BarWidget {
         function show(): void { root.open() }
         function hide(): void { root.close() }
         function toggle(): void { root.togglePanel() }
+        function setup(): void { if (panelLoader.item) panelLoader.item.showSetup() }
+        function history(): void { if (panelLoader.item) panelLoader.item.showHistory() }
     }
 
-    BarIconButton {
+    WidgetButton {
         id: button
         anchors.fill: parent
         bar: root.bar
-        text: "󰘚"
+        labelVisible: false
+        hasVisualContent: true
+        fixedWidth: Style.bar.iconSlot + Style.space(10)
         tooltipText: root.inFlight > 0
             ? ("Disparchy · " + root.inFlight + " in flight")
             : "Disparchy"
         onPressed: root.togglePanel()
+
+        DisparchyIcon {
+            anchors.centerIn: parent
+            iconSize: Style.space(16)
+            color: root.inFlight > 0 ? Color.accent : Color.popups.text
+            busy: root.inFlight > 0
+        }
     }
 
     Rectangle {

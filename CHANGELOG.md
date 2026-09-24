@@ -3,6 +3,14 @@
 All notable changes to Disparchy (`dkfiander.disparchy`) are documented here.
 The version in `manifest.json` is the single source of truth.
 
+## 0.4.0, 2026-09-24
+
+- Added the theme-aware dispatch mark to the bar and panel header, with light and dark SVG/PNG assets
+- Rendered provider answers as Markdown in bordered comparison cards, with scrollable expanded replies
+- Added active lane motion and disabled image loading from answer Markdown; copy still uses the original text
+- Gave Ask a multiline composer and compact provider chips; stacked Clear above Send or Cancel
+- Styled Setup and History to match Ask, with roomy two-column provider cards and auto-paste in Setup, off by default
+
 ## 0.3.1, 2026-09-23
 
 - Replaced the overlay with a one-line hangdown. One prompt, provider checkboxes, parallel answer columns

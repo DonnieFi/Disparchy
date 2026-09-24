@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="768" height="320" viewBox="0 0 768 320">
+  <title>Disparchy dispatch mark in inverse colours and at bar size</title>
+  <rect width="384" height="320" fill="#171a20"/>
+  <rect x="384" width="384" height="320" fill="#e6e5dd"/>
+  <g transform="translate(120 47) scale(2.25)" fill="#e6e5dd"><path fill-rule="evenodd" d="M7 9H57V43H42L32 55L22 43H7V9ZM16 24H23V35H16V24ZM28 17H35V35H28V17ZM40 21H47V35H40V21Z"/></g>
+  <g transform="translate(504 47) scale(2.25)" fill="#171a20"><path fill-rule="evenodd" d="M7 9H57V43H42L32 55L22 43H7V9ZM16 24H23V35H16V24ZM28 17H35V35H28V17ZM40 21H47V35H40V21Z"/></g>
+  <g font-family="sans-serif" text-anchor="middle" font-size="21" font-weight="bold">
+    <text x="192" y="238" fill="#e6e5dd">Dispatch mark</text>
+    <text x="576" y="238" fill="#171a20">Dispatch mark</text>
+  </g>
+  <g font-family="sans-serif" text-anchor="middle" font-size="13">
+    <text x="192" y="266" fill="#e6e5dd">Warm ivory / charcoal</text>
+    <text x="576" y="266" fill="#171a20">Charcoal / warm ivory</text>
+  </g>
+</svg>

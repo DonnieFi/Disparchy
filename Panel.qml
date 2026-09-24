@@ -535,6 +535,20 @@ Panel {
         root.viewingRunId = ""
     }
 
+    function showSetup() {
+        root.open()
+        root.historyOpen = false
+        root.viewingRunId = ""
+        root.setupOpen = true
+    }
+
+    function showHistory() {
+        root.open()
+        root.setupOpen = false
+        root.viewingRunId = ""
+        root.historyOpen = true
+    }
+
     function toggleHistory() {
         root.setupOpen = false
         if (root.viewingPast) {
@@ -810,34 +824,11 @@ Panel {
 
                             Row {
                                 spacing: Style.space(8)
-                                Item {
-                                    width: Style.space(22)
-                                    height: Style.space(22)
+                                DisparchyIcon {
                                     anchors.verticalCenter: parent.verticalCenter
-                                    Rectangle {
-                                        width: Style.space(4)
-                                        height: Style.space(10)
-                                        radius: 1
-                                        color: root.ink
-                                        anchors.left: parent.left
-                                        anchors.bottom: parent.bottom
-                                    }
-                                    Rectangle {
-                                        width: Style.space(4)
-                                        height: Style.space(16)
-                                        radius: 1
-                                        color: root.ink
-                                        anchors.horizontalCenter: parent.horizontalCenter
-                                        anchors.bottom: parent.bottom
-                                    }
-                                    Rectangle {
-                                        width: Style.space(4)
-                                        height: Style.space(12)
-                                        radius: 1
-                                        color: root.ink
-                                        anchors.right: parent.right
-                                        anchors.bottom: parent.bottom
-                                    }
+                                    iconSize: Style.space(22)
+                                    color: root.headerTint
+                                    busy: root.inFlight > 0
                                 }
                                 Text {
                                     text: "DISPARCHY"
@@ -928,42 +919,49 @@ Panel {
                             }
                         }
 
-                        TabAction {
-                            anchors.right: parent.right
-                            anchors.verticalCenter: parent.verticalCenter
-                            label: "Paste"
-                            selected: Model.autoPasteOn(root.selection)
-                            onClicked: root.setAutoPaste(!Model.autoPasteOn(root.selection))
-                        }
                     }
                 }
 
                 Row {
-                    visible: !root.setupOpen
+                    visible: !root.setupOpen && !root.historyOpen
                     width: parent.width
-                    spacing: Style.space(4)
+                    spacing: Style.space(8)
 
                     BorderSurface {
                         width: parent.width
-                            - (sendBtn.visible ? sendBtn.width : 0)
-                            - (clearBtn.visible ? clearBtn.width : 0)
-                            - (cancelBtn.visible ? cancelBtn.width : 0)
+                            - (actionStack.visible ? actionStack.width : 0)
                             - (backBtn.visible ? backBtn.width : 0)
-                            - parent.spacing * ((sendBtn.visible ? 1 : 0) + (clearBtn.visible ? 1 : 0) + (cancelBtn.visible ? 1 : 0) + (backBtn.visible ? 1 : 0))
-                        height: root.lineHeight
-                        radius: root.actionRadius
+                            - parent.spacing * ((actionStack.visible ? 1 : 0) + (backBtn.visible ? 1 : 0))
+                        height: Style.space(88)
+                        radius: Style.space(12)
                         clip: true
-                        color: Style.controlFill(promptEdit.activeFocus, false, root.ink, Color.accent)
+                        color: Qt.alpha(Color.accent, promptEdit.activeFocus ? 0.12 : 0.07)
                         borderSpec: Border.controlSpec(promptEdit.activeFocus ? "focus" : "normal", root.ink, Color.accent)
 
                         Text {
-                            visible: root.promptText.length === 0 && !root.viewingPast
-                            anchors.fill: parent
-                            anchors.leftMargin: Style.spacing.controlPaddingX
-                            anchors.rightMargin: Style.spacing.controlPaddingX
-                            verticalAlignment: Text.AlignVCenter
+                            id: promptLabel
+                            anchors.left: parent.left
+                            anchors.top: parent.top
+                            anchors.margins: Style.space(10)
                             textFormat: Text.PlainText
-                            text: "Ask checked providers…"
+                            text: root.viewingPast ? "SAVED PROMPT" : "YOUR PROMPT"
+                            color: Color.accent
+                            font.family: root.fontFamily
+                            font.pixelSize: Style.font.caption
+                            font.bold: true
+                            font.letterSpacing: 1.2
+                        }
+
+                        Text {
+                            visible: root.promptText.length === 0 && !root.viewingPast
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: promptLabel.bottom
+                            anchors.leftMargin: Style.space(10)
+                            anchors.rightMargin: Style.space(10)
+                            anchors.topMargin: Style.space(6)
+                            textFormat: Text.PlainText
+                            text: "Ask the selected providers anything…"
                             color: root.dim
                             font.family: root.fontFamily
                             font.pixelSize: Style.font.bodySmall
@@ -972,30 +970,39 @@ Panel {
 
                         Text {
                             visible: root.viewingPast
-                            anchors.fill: parent
-                            anchors.leftMargin: Style.spacing.controlPaddingX
-                            anchors.rightMargin: Style.spacing.controlPaddingX
-                            verticalAlignment: Text.AlignVCenter
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: promptLabel.bottom
+                            anchors.leftMargin: Style.space(10)
+                            anchors.rightMargin: Style.space(10)
+                            anchors.topMargin: Style.space(6)
                             textFormat: Text.PlainText
                             text: root.displayRun ? root.displayRun.prompt : ""
-                            color: root.dim
+                            color: root.ink
                             font.family: root.fontFamily
                             font.pixelSize: Style.font.bodySmall
+                            wrapMode: Text.Wrap
+                            maximumLineCount: 2
                             elide: Text.ElideRight
                         }
 
-                        TextInput {
+                        TextEdit {
                             id: promptEdit
                             visible: !root.viewingPast
-                            anchors.fill: parent
-                            anchors.leftMargin: Style.spacing.controlPaddingX
-                            anchors.rightMargin: Style.spacing.controlPaddingX
-                            verticalAlignment: TextInput.AlignVCenter
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: promptLabel.bottom
+                            anchors.bottom: promptHint.top
+                            anchors.leftMargin: Style.space(10)
+                            anchors.rightMargin: Style.space(10)
+                            anchors.topMargin: Style.space(6)
+                            anchors.bottomMargin: Style.space(5)
                             text: root.promptText
                             onTextChanged: root.promptText = text
                             color: root.ink
                             font.family: root.fontFamily
                             font.pixelSize: Style.font.bodySmall
+                            wrapMode: TextEdit.Wrap
                             clip: true
                             selectionColor: Style.selectionFillFor(root.ink, Color.accent)
                             selectedTextColor: root.ink
@@ -1003,20 +1010,38 @@ Panel {
                                 if (event.key === Qt.Key_Escape) {
                                     root.close()
                                     event.accepted = true
-                                } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                                } else if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
+                                        && !(event.modifiers & Qt.ShiftModifier)) {
                                     root.send()
                                     event.accepted = true
                                 }
                             }
                         }
+
+                        Text {
+                            id: promptHint
+                            anchors.left: parent.left
+                            anchors.bottom: parent.bottom
+                            anchors.margins: Style.space(10)
+                            text: root.viewingPast ? "From history" : "Enter to compare  ·  Shift+Enter for a new line"
+                            color: root.dim
+                            font.family: root.fontFamily
+                            font.pixelSize: Style.font.caption
+                        }
                     }
+
+                    Column {
+                        id: actionStack
+                        visible: !root.viewingPast
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: Style.space(70)
+                        spacing: Style.space(6)
 
                     BorderSurface {
                         id: clearBtn
-                        visible: !root.viewingPast
                         opacity: root.canClear ? 1 : 0.4
-                        width: visible ? Math.max(Style.space(56), clearLabel.implicitWidth + Style.space(16)) : 0
-                        height: root.lineHeight
+                        width: parent.width
+                        height: Style.space(34)
                         radius: root.actionRadius
                         color: Style.controlFill(clearHover.containsMouse, false, root.ink, Color.accent)
                         borderSpec: Border.controlSpec("normal", root.ink, Color.accent)
@@ -1043,10 +1068,10 @@ Panel {
 
                     BorderSurface {
                         id: sendBtn
-                        width: Math.max(Style.space(56), sendLabel.implicitWidth + Style.space(16))
-                        height: root.lineHeight
+                        width: parent.width
+                        height: Style.space(34)
                         radius: root.actionRadius
-                        visible: !root.viewingPast
+                        visible: root.inFlight === 0
                         color: root.canSend
                             ? Qt.alpha(Color.accent, 0.35)
                             : Style.controlFill(sendHover.containsMouse, false, root.ink, Color.accent)
@@ -1077,9 +1102,9 @@ Panel {
 
                     BorderSurface {
                         id: cancelBtn
-                        visible: root.inFlight > 0 && !root.viewingPast
-                        width: visible ? Math.max(Style.space(64), cancelLabel.implicitWidth + Style.space(16)) : 0
-                        height: root.lineHeight
+                        visible: root.inFlight > 0
+                        width: parent.width
+                        height: Style.space(34)
                         radius: root.actionRadius
                         color: Qt.alpha(Color.urgent, 0.35)
                         borderSpec: Border.controlSpec("selected", root.ink, Color.urgent)
@@ -1102,8 +1127,11 @@ Panel {
                         }
                     }
 
+                    }
+
                     BorderSurface {
                         id: backBtn
+                        anchors.verticalCenter: parent.verticalCenter
                         visible: root.viewingPast
                         width: visible ? Style.space(56) : 0
                         height: root.lineHeight
@@ -1131,89 +1159,103 @@ Panel {
                     width: parent.width
                     height: root.setupOpen ? setupCol.implicitHeight
                         : (root.historyOpen ? histCol.implicitHeight
-                            : providerFlow.height + (root.menuCli !== "" ? modelMenu.height : 0))
+                            : providerFlow.y + providerFlow.height
+                                + (root.menuCli !== "" ? modelMenu.height + Style.space(4) : 0))
 
-                    Row {
+                    Text {
+                        id: providerLabel
+                        visible: !root.setupOpen && !root.historyOpen
+                        height: visible ? implicitHeight : 0
+                        text: "SEND TO"
+                        color: root.dim
+                        font.family: root.fontFamily
+                        font.pixelSize: Style.font.caption
+                        font.bold: true
+                        font.letterSpacing: 1.2
+                    }
+
+                    Flow {
                         id: providerFlow
                         visible: !root.setupOpen && !root.historyOpen
                         width: parent.width
-                        height: root.lineHeight
-                        spacing: Style.space(10)
-                        clip: true
+                        y: providerLabel.height + (visible ? Style.space(6) : 0)
+                        height: implicitHeight
+                        spacing: Style.space(7)
 
                         Repeater {
                             model: root.shown
-                            delegate: Row {
+                            delegate: Rectangle {
+                                id: providerChip
                                 required property var modelData
-                                spacing: Style.space(4)
-                                height: root.lineHeight
-
+                                width: chipContents.implicitWidth + Style.space(18)
+                                height: Style.space(30)
+                                radius: Style.space(9)
                                 readonly property bool armed: Model.isArmed(root.selection, modelData.id)
                                 readonly property color tint: root.tintFor(modelData.id)
+                                color: armed ? Qt.alpha(tint, 0.15) : Qt.alpha(root.ink, 0.04)
+                                border.color: armed ? Qt.alpha(tint, 0.75) : Qt.alpha(root.ink, 0.22)
+                                border.width: 1
 
-                                Rectangle {
-                                    width: root.controlSize
-                                    height: root.controlSize
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    radius: Math.max(2, Style.cornerRadius / 2)
-                                    color: armed ? Qt.alpha(tint, 0.85) : "transparent"
-                                    border.color: tint
-                                    border.width: 1
+                                Row {
+                                    id: chipContents
+                                    anchors.centerIn: parent
+                                    spacing: Style.space(6)
+
+                                    Rectangle {
+                                        width: Style.space(15)
+                                        height: width
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        radius: Math.max(2, Style.cornerRadius / 2)
+                                        color: providerChip.armed ? providerChip.tint : "transparent"
+                                        border.color: providerChip.tint
+                                        border.width: 1
+                                        Text {
+                                            anchors.centerIn: parent
+                                            visible: providerChip.armed
+                                            text: "✓"
+                                            color: Color.background
+                                            font.pixelSize: Style.space(10)
+                                            font.bold: true
+                                        }
+                                    }
+
                                     Text {
-                                        anchors.centerIn: parent
-                                        visible: armed
-                                        text: "✓"
-                                        color: Color.background
-                                        font.pixelSize: Style.space(10)
-                                        font.bold: true
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: providerChip.modelData.label
+                                        color: providerChip.tint
+                                        font.family: root.fontFamily
+                                        font.pixelSize: Style.font.bodySmall
+                                        font.bold: providerChip.armed
                                     }
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        anchors.margins: -Style.space(4)
-                                        enabled: !root.viewingPast && root.inFlight === 0
-                                        cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                                        onClicked: root.toggleProvider(modelData.id)
-                                    }
-                                }
 
-                                Text {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    text: modelData.label
-                                    color: tint
-                                    font.family: root.fontFamily
-                                    font.pixelSize: Style.font.bodySmall
-                                    font.bold: armed
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        anchors.margins: -Style.space(4)
-                                        enabled: !root.viewingPast && root.inFlight === 0
-                                        cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                                        onClicked: root.toggleProvider(modelData.id)
-                                    }
-                                }
-
-                                Rectangle {
-                                    width: root.controlSize
-                                    height: root.controlSize
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    visible: armed
-                                    radius: Math.max(2, Style.cornerRadius / 2)
-                                    color: root.menuCli === modelData.id ? Qt.alpha(tint, 0.22) : "transparent"
-                                    border.color: tint
-                                    border.width: 1
                                     Text {
-                                        anchors.centerIn: parent
-                                        text: root.menuCli === modelData.id ? "▴" : "▾"
-                                        color: tint
+                                        id: modelArrow
+                                        visible: providerChip.armed
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: root.menuCli === providerChip.modelData.id ? "▴" : "▾"
+                                        color: providerChip.tint
                                         font.family: root.fontFamily
                                         font.pixelSize: Style.space(14)
                                     }
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        enabled: !root.viewingPast && root.inFlight === 0
-                                        cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                                        onClicked: root.menuCli = root.menuCli === modelData.id ? "" : modelData.id
-                                    }
+                                }
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    enabled: !root.viewingPast && root.inFlight === 0
+                                    cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                    onClicked: root.toggleProvider(providerChip.modelData.id)
+                                }
+
+                                MouseArea {
+                                    visible: providerChip.armed
+                                    enabled: visible && !root.viewingPast && root.inFlight === 0
+                                    anchors.right: parent.right
+                                    anchors.top: parent.top
+                                    anchors.bottom: parent.bottom
+                                    width: modelArrow.implicitWidth + Style.space(12)
+                                    cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                    onClicked: root.menuCli = root.menuCli === providerChip.modelData.id
+                                        ? "" : providerChip.modelData.id
                                 }
                             }
                         }
@@ -1223,193 +1265,285 @@ Panel {
                         id: setupCol
                         visible: root.setupOpen
                         width: parent.width
-                        spacing: Style.space(2)
+                        spacing: Style.space(10)
 
-                        Repeater {
-                            model: Model.cliList()
-                            delegate: Column {
-                                id: setupRow
-                                required property var modelData
-                                width: setupCol.width
-                                spacing: Style.space(2)
+                        Text {
+                            text: "PROVIDERS"
+                            color: root.dim
+                            font.family: root.fontFamily
+                            font.pixelSize: Style.font.caption
+                            font.bold: true
+                            font.letterSpacing: 1.2
+                        }
 
-                                readonly property string cliId: modelData.id
-                                readonly property var presets: modelData.presets || []
-                                readonly property bool onBar: Model.isEnabled(root.selection, modelData.id)
-                                readonly property var status: root.statusFor(modelData.id)
-                                readonly property color tint: root.tintFor(modelData.id)
-                                readonly property bool http: modelData.transport === "http"
+                        Grid {
+                            id: setupGrid
+                            width: parent.width
+                            columns: 2
+                            columnSpacing: Style.space(10)
+                            rowSpacing: Style.space(10)
 
-                                Item {
-                                    width: parent.width
-                                    height: Style.space(30)
+                            Repeater {
+                                model: Model.cliList()
+                                delegate: Rectangle {
+                                    id: setupCard
+                                    required property var modelData
+                                    width: (setupGrid.width - setupGrid.columnSpacing) / 2
+                                    height: setupRow.implicitHeight + Style.space(16)
+                                    radius: Style.space(9)
+                                    color: Qt.alpha(setupRow.tint, 0.07)
+                                    border.color: Qt.alpha(setupRow.tint, 0.33)
+                                    border.width: 1
 
-                                    Rectangle {
-                                        width: Style.space(3)
-                                        height: Style.space(22)
-                                        anchors.left: parent.left
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        radius: 1
-                                        color: tint
-                                    }
+                                    Column {
+                                        id: setupRow
+                                        x: Style.space(8)
+                                        y: Style.space(8)
+                                        width: parent.width - Style.space(16)
+                                        spacing: Style.space(7)
 
-                                    Text {
-                                        x: Style.space(14)
-                                        width: Style.space(108)
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: modelData.label
-                                        color: tint
-                                        font.family: root.fontFamily
-                                        font.pixelSize: Style.font.bodySmall
-                                        font.bold: true
-                                        elide: Text.ElideRight
-                                    }
+                                        readonly property string cliId: setupCard.modelData.id
+                                        readonly property var presets: setupCard.modelData.presets || []
+                                        readonly property bool onBar: Model.isEnabled(root.selection, cliId)
+                                        readonly property var status: root.statusFor(cliId)
+                                        readonly property color tint: root.tintFor(cliId)
+                                        readonly property bool http: setupCard.modelData.transport === "http"
 
-                                    Text {
-                                        x: Style.space(130)
-                                        width: Math.max(Style.space(48), parent.width - x - Style.space(64))
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: root.statusLabel(status, http)
-                                        color: status.auth === "signed-out" ? Color.urgent : root.dim
-                                        font.family: root.fontFamily
-                                        font.pixelSize: Style.font.bodySmall
-                                        font.underline: !http
-                                        elide: Text.ElideRight
-                                        MouseArea {
-                                            anchors.fill: parent
-                                            enabled: !http
-                                            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                                            onClicked: root.signIn(setupRow.cliId)
-                                        }
-                                    }
+                                        Item {
+                                            width: parent.width
+                                            height: Style.space(30)
 
-                                    Rectangle {
-                                        anchors.right: parent.right
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: Style.space(44)
-                                        height: Style.space(22)
-                                        radius: Style.space(11)
-                                        color: onBar ? Qt.alpha(tint, 0.85) : Qt.alpha(root.dim, 0.35)
-                                        Rectangle {
-                                            width: Style.space(16)
-                                            height: Style.space(16)
-                                            radius: Style.space(8)
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            x: onBar ? parent.width - width - Style.space(3) : Style.space(3)
-                                            color: Color.background
-                                        }
-                                        MouseArea {
-                                            anchors.fill: parent
-                                            anchors.margins: -Style.space(6)
-                                            cursorShape: Qt.PointingHandCursor
-                                            onClicked: root.setShown(setupRow.cliId, !onBar)
-                                        }
-                                    }
-                                }
+                                            Rectangle {
+                                                width: Style.space(3)
+                                                height: Style.space(22)
+                                                anchors.left: parent.left
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                radius: 1
+                                                color: setupRow.tint
+                                            }
 
-                                Row {
-                                    visible: Model.needsEndpoint(setupRow.cliId)
-                                    width: parent.width
-                                    height: visible ? Style.space(24) : 0
-                                    spacing: Style.space(6)
+                                            Text {
+                                                x: Style.space(14)
+                                                width: Style.space(108)
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                text: setupCard.modelData.label
+                                                color: setupRow.tint
+                                                font.family: root.fontFamily
+                                                font.pixelSize: Style.font.bodySmall
+                                                font.bold: true
+                                                elide: Text.ElideRight
+                                            }
 
-                                    TextInput {
-                                        id: endpointEdit
-                                        width: parent.width - portRow.width - parent.spacing
-                                        leftPadding: Style.space(8)
-                                        height: parent.height
-                                        text: Model.endpointFor(root.selection, setupRow.cliId)
-                                        color: root.ink
-                                        font.family: root.fontFamily
-                                        font.pixelSize: Style.font.caption
-                                        selectByMouse: true
-                                        clip: true
-                                        onEditingFinished: root.setEndpoint(setupRow.cliId, text)
-                                        Rectangle {
-                                            anchors.fill: parent
-                                            z: -1
-                                            radius: Math.max(2, Style.cornerRadius / 2)
-                                            color: "transparent"
-                                            border.color: Qt.alpha(tint, 0.7)
-                                            border.width: 1
-                                        }
-                                    }
+                                            Text {
+                                                x: Style.space(130)
+                                                width: Math.max(Style.space(48), parent.width - x - Style.space(64))
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                text: root.statusLabel(setupRow.status, setupRow.http)
+                                                color: setupRow.status.auth === "signed-out" ? Color.urgent : root.dim
+                                                font.family: root.fontFamily
+                                                font.pixelSize: Style.font.bodySmall
+                                                font.underline: !setupRow.http
+                                                elide: Text.ElideRight
+                                                MouseArea {
+                                                    anchors.fill: parent
+                                                    enabled: !setupRow.http
+                                                    cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                                    onClicked: root.signIn(setupRow.cliId)
+                                                }
+                                            }
 
-                                    Row {
-                                        id: portRow
-                                        spacing: Style.space(4)
-                                        Repeater {
-                                            model: setupRow.presets
-                                            delegate: Rectangle {
-                                                required property string modelData
-                                                width: portText.implicitWidth + Style.space(12)
-                                                height: Style.space(24)
-                                                radius: Style.space(12)
-                                                color: endpointEdit.text === modelData
-                                                    ? Qt.alpha(setupRow.tint, 0.35)
-                                                    : "transparent"
-                                                border.color: setupRow.tint
-                                                border.width: 1
-                                                Text {
-                                                    id: portText
-                                                    anchors.centerIn: parent
-                                                    text: root.portLabel(modelData)
-                                                    color: setupRow.tint
-                                                    font.family: root.fontFamily
-                                                    font.pixelSize: Style.font.caption
+                                            Rectangle {
+                                                anchors.right: parent.right
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                width: Style.space(44)
+                                                height: Style.space(22)
+                                                radius: Style.space(11)
+                                                color: setupRow.onBar ? Qt.alpha(setupRow.tint, 0.85) : Qt.alpha(root.dim, 0.35)
+                                                Rectangle {
+                                                    width: Style.space(16)
+                                                    height: Style.space(16)
+                                                    radius: Style.space(8)
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    x: setupRow.onBar ? parent.width - width - Style.space(3) : Style.space(3)
+                                                    color: Color.background
                                                 }
                                                 MouseArea {
                                                     anchors.fill: parent
+                                                    anchors.margins: -Style.space(6)
                                                     cursorShape: Qt.PointingHandCursor
-                                                    onClicked: {
-                                                        root.setEndpoint(setupRow.cliId, modelData)
-                                                        endpointEdit.text = modelData
+                                                    onClicked: root.setShown(setupRow.cliId, !setupRow.onBar)
+                                                }
+                                            }
+                                        }
+
+                                        Row {
+                                            visible: Model.needsEndpoint(setupRow.cliId)
+                                            width: parent.width
+                                            height: visible ? Style.space(24) : 0
+                                            spacing: Style.space(6)
+
+                                            TextInput {
+                                                id: endpointEdit
+                                                width: parent.width - portRow.width - parent.spacing
+                                                leftPadding: Style.space(8)
+                                                height: parent.height
+                                                text: Model.endpointFor(root.selection, setupRow.cliId)
+                                                color: root.ink
+                                                font.family: root.fontFamily
+                                                font.pixelSize: Style.font.caption
+                                                selectByMouse: true
+                                                clip: true
+                                                onEditingFinished: root.setEndpoint(setupRow.cliId, text)
+                                                Rectangle {
+                                                    anchors.fill: parent
+                                                    z: -1
+                                                    radius: Math.max(2, Style.cornerRadius / 2)
+                                                    color: "transparent"
+                                                    border.color: Qt.alpha(setupRow.tint, 0.7)
+                                                    border.width: 1
+                                                }
+                                            }
+
+                                            Row {
+                                                id: portRow
+                                                spacing: Style.space(4)
+                                                Repeater {
+                                                    model: setupRow.presets
+                                                    delegate: Rectangle {
+                                                        required property string modelData
+                                                        width: portText.implicitWidth + Style.space(12)
+                                                        height: Style.space(24)
+                                                        radius: Style.space(12)
+                                                        color: endpointEdit.text === modelData
+                                                            ? Qt.alpha(setupRow.tint, 0.35)
+                                                            : "transparent"
+                                                        border.color: setupRow.tint
+                                                        border.width: 1
+                                                        Text {
+                                                            id: portText
+                                                            anchors.centerIn: parent
+                                                            text: root.portLabel(modelData)
+                                                            color: setupRow.tint
+                                                            font.family: root.fontFamily
+                                                            font.pixelSize: Style.font.caption
+                                                        }
+                                                        MouseArea {
+                                                            anchors.fill: parent
+                                                            cursorShape: Qt.PointingHandCursor
+                                                            onClicked: {
+                                                                root.setEndpoint(setupRow.cliId, modelData)
+                                                                endpointEdit.text = modelData
+                                                            }
+                                                        }
                                                     }
                                                 }
                                             }
                                         }
+
+                                        Item {
+                                            visible: Model.needsSecret(setupRow.cliId)
+                                            width: parent.width
+                                            height: visible ? Style.space(24) : 0
+
+                                            TextInput {
+                                                id: secretEdit
+                                                z: 1
+                                                anchors.fill: parent
+                                                leftPadding: Style.space(8)
+                                                verticalAlignment: TextInput.AlignVCenter
+                                                echoMode: TextInput.Password
+                                                text: Model.secretFor(root.auth, setupRow.cliId)
+                                                color: root.ink
+                                                font.family: root.fontFamily
+                                                font.pixelSize: Style.font.caption
+                                                selectByMouse: true
+                                                clip: true
+                                                onEditingFinished: root.setSecret(setupRow.cliId, text)
+                                            }
+
+                                            Text {
+                                                x: Style.space(8)
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                visible: secretEdit.text.length === 0
+                                                text: "API key"
+                                                color: root.dim
+                                                font.family: root.fontFamily
+                                                font.pixelSize: Style.font.caption
+                                            }
+
+                                            Rectangle {
+                                                anchors.fill: parent
+                                                z: -1
+                                                radius: Math.max(2, Style.cornerRadius / 2)
+                                                color: "transparent"
+                                                border.color: Qt.alpha(setupRow.tint, 0.7)
+                                                border.width: 1
+                                            }
+                                        }
                                     }
                                 }
+                            }
+                        }
 
-                                Item {
-                                    visible: Model.needsSecret(setupRow.cliId)
-                                    width: parent.width
-                                    height: visible ? Style.space(24) : 0
+                        Text {
+                            text: "PREFERENCES"
+                            color: root.dim
+                            font.family: root.fontFamily
+                            font.pixelSize: Style.font.caption
+                            font.bold: true
+                            font.letterSpacing: 1.2
+                        }
 
-                                    TextInput {
-                                        id: secretEdit
-                                        z: 1
-                                        anchors.fill: parent
-                                        leftPadding: Style.space(8)
-                                        verticalAlignment: TextInput.AlignVCenter
-                                        echoMode: TextInput.Password
-                                        text: Model.secretFor(root.auth, setupRow.cliId)
-                                        color: root.ink
-                                        font.family: root.fontFamily
-                                        font.pixelSize: Style.font.caption
-                                        selectByMouse: true
-                                        clip: true
-                                        onEditingFinished: root.setSecret(setupRow.cliId, text)
-                                    }
+                        Rectangle {
+                            width: parent.width
+                            height: Style.space(52)
+                            radius: Style.space(9)
+                            color: Qt.alpha(Color.accent, 0.07)
+                            border.color: Qt.alpha(Color.accent, 0.35)
+                            border.width: 1
 
-                                    Text {
-                                        x: Style.space(8)
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        visible: secretEdit.text.length === 0
-                                        text: "API key"
-                                        color: root.dim
-                                        font.family: root.fontFamily
-                                        font.pixelSize: Style.font.caption
-                                    }
+                            Column {
+                                anchors.left: parent.left
+                                anchors.verticalCenter: parent.verticalCenter
+                                anchors.leftMargin: Style.space(12)
+                                spacing: Style.space(3)
+                                Text {
+                                    text: "AUTO-PASTE CLIPBOARD"
+                                    color: root.ink
+                                    font.family: root.fontFamily
+                                    font.pixelSize: Style.font.bodySmall
+                                    font.bold: true
+                                }
+                                Text {
+                                    text: "Fill an empty prompt when Disparchy opens"
+                                    color: root.dim
+                                    font.family: root.fontFamily
+                                    font.pixelSize: Style.font.caption
+                                }
+                            }
 
-                                    Rectangle {
-                                        anchors.fill: parent
-                                        z: -1
-                                        radius: Math.max(2, Style.cornerRadius / 2)
-                                        color: "transparent"
-                                        border.color: Qt.alpha(setupRow.tint, 0.7)
-                                        border.width: 1
-                                    }
+                            Rectangle {
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                anchors.rightMargin: Style.space(12)
+                                width: Style.space(44)
+                                height: Style.space(22)
+                                radius: Style.space(11)
+                                readonly property bool on: Model.autoPasteOn(root.selection)
+                                color: on ? Qt.alpha(Color.accent, 0.85) : Qt.alpha(root.dim, 0.35)
+                                Rectangle {
+                                    width: Style.space(16)
+                                    height: width
+                                    radius: width / 2
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    x: parent.on ? parent.width - width - Style.space(3) : Style.space(3)
+                                    color: Color.background
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    anchors.margins: -Style.space(6)
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: root.setAutoPaste(!Model.autoPasteOn(root.selection))
                                 }
                             }
                         }
@@ -1419,26 +1553,91 @@ Panel {
                         id: histCol
                         visible: root.historyOpen
                         width: parent.width
-                        spacing: Style.space(2)
+                        spacing: Style.space(8)
+
+                        Item {
+                            width: parent.width
+                            height: Style.space(22)
+                            Text {
+                                anchors.left: parent.left
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "SAVED COMPARISONS"
+                                color: root.dim
+                                font.family: root.fontFamily
+                                font.pixelSize: Style.font.caption
+                                font.bold: true
+                                font.letterSpacing: 1.2
+                            }
+                            Text {
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "Clear history"
+                                color: clearMa.containsMouse ? Color.urgent : root.dim
+                                font.family: root.fontFamily
+                                font.pixelSize: Style.font.caption
+                                MouseArea {
+                                    id: clearMa
+                                    anchors.fill: parent
+                                    anchors.margins: -4
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        clearConfirm.selectedIndex = 1
+                                        root.clearConfirmOpen = true
+                                    }
+                                }
+                            }
+                        }
 
                         ListView {
                             width: parent.width
-                            height: Math.min(Style.space(110), Math.max(Style.space(22), contentHeight))
+                            height: Math.min(Style.space(250), Math.max(Style.space(52), contentHeight))
+                            spacing: Style.space(6)
                             clip: true
                             model: historyModel
-                            delegate: Item {
+                            delegate: Rectangle {
                                 required property string runId
                                 required property string startedAt
                                 required property string preview
+                                required property string chips
                                 width: ListView.view.width
-                                height: Style.space(22)
+                                height: Style.space(52)
+                                radius: Style.space(8)
+                                color: histMa.containsMouse ? Qt.alpha(Color.accent, 0.14)
+                                    : Qt.alpha(Color.accent, 0.055)
+                                border.color: histMa.containsMouse ? Qt.alpha(Color.accent, 0.65)
+                                    : Qt.alpha(Color.accent, 0.23)
+                                border.width: 1
+
                                 Text {
-                                    anchors.fill: parent
-                                    verticalAlignment: Text.AlignVCenter
-                                    text: root.formatWhen(startedAt) + "  " + (preview || "(empty)")
-                                    color: histMa.containsMouse ? root.ink : root.dim
+                                    anchors.left: parent.left
+                                    anchors.top: parent.top
+                                    anchors.margins: Style.space(8)
+                                    text: root.formatWhen(startedAt)
+                                    color: Color.accent
                                     font.family: root.fontFamily
                                     font.pixelSize: Style.font.caption
+                                    font.bold: true
+                                }
+                                Text {
+                                    anchors.right: parent.right
+                                    anchors.top: parent.top
+                                    anchors.margins: Style.space(8)
+                                    text: chips
+                                    color: root.dim
+                                    font.family: root.fontFamily
+                                    font.pixelSize: Style.font.caption
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.bottom: parent.bottom
+                                    anchors.margins: Style.space(8)
+                                    text: preview || "(empty prompt)"
+                                    color: root.ink
+                                    font.family: root.fontFamily
+                                    font.pixelSize: Style.font.bodySmall
                                     elide: Text.ElideRight
                                 }
                                 MouseArea {
@@ -1455,21 +1654,11 @@ Panel {
                         }
 
                         Text {
-                            text: "Clear"
-                            color: clearMa.containsMouse ? Color.urgent : root.dim
+                            visible: historyModel.count === 0
+                            text: "No comparisons saved yet. Ask a question to start one."
+                            color: root.dim
                             font.family: root.fontFamily
                             font.pixelSize: Style.font.caption
-                            MouseArea {
-                                id: clearMa
-                                anchors.fill: parent
-                                anchors.margins: -4
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    clearConfirm.selectedIndex = 1
-                                    root.clearConfirmOpen = true
-                                }
-                            }
                         }
                     }
 
@@ -1477,7 +1666,7 @@ Panel {
                         id: modelMenu
                         visible: root.menuCli !== "" && !root.setupOpen && !root.historyOpen
                         width: parent.width
-                        y: providerFlow.height
+                        y: providerFlow.y + providerFlow.height + Style.space(4)
                         height: Math.min(modelCol.implicitHeight, Style.space(220))
                         contentHeight: modelCol.implicitHeight
                         clip: true
@@ -1531,10 +1720,11 @@ Panel {
                     Repeater {
                         id: paper
                         model: root.displayRun ? root.displayRun.targets : []
-                        delegate: Column {
+                        delegate: Item {
+                            id: resultCard
                             required property var modelData
                             width: Math.max(Style.space(160), (parent.width - Style.space(8) * (paper.count - 1)) / Math.max(1, paper.count))
-                            spacing: Style.space(4)
+                            height: cardContent.implicitHeight + Style.space(20)
 
                             readonly property color tint: root.tintFor(modelData.cli)
                             readonly property string tKey: Model.targetKey(modelData.cli, modelData.model)
@@ -1542,92 +1732,152 @@ Panel {
                             readonly property string bodyText: modelData.answer !== "" ? modelData.answer
                                 : (modelData.error !== "" ? modelData.error
                                     : (modelData.status === "pending" ? "Running…" : ""))
+                            readonly property int previewHeight: Style.space(140)
+                            readonly property bool hasMore: answerText.implicitHeight > previewHeight + 1
 
                             Rectangle {
-                                width: parent.width
+                                anchors.fill: parent
+                                radius: Style.space(9)
+                                color: Qt.alpha(resultCard.tint, 0.055)
+                                border.color: Qt.alpha(resultCard.tint, 0.28)
+                                border.width: 1
+                            }
+
+                            Rectangle {
+                                anchors.top: parent.top
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.leftMargin: Style.space(9)
+                                anchors.rightMargin: Style.space(9)
                                 height: Style.space(3)
                                 radius: 1
                                 color: modelData.status === "failed" || modelData.status === "timeout"
-                                    ? Color.urgent : tint
+                                    ? Color.urgent : resultCard.tint
+                                SequentialAnimation on opacity {
+                                    running: resultCard.modelData.status === "pending"
+                                    loops: Animation.Infinite
+                                    NumberAnimation { to: 0.32; duration: 750; easing.type: Easing.InOutSine }
+                                    NumberAnimation { to: 1; duration: 750; easing.type: Easing.InOutSine }
+                                }
                             }
 
-                            Row {
-                                width: parent.width
+                            Column {
+                                id: cardContent
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.top: parent.top
+                                anchors.margins: Style.space(10)
                                 spacing: Style.space(6)
-                                Text {
-                                    text: root.cliLabel(modelData.cli)
-                                    color: tint
-                                    font.family: root.fontFamily
-                                    font.pixelSize: Style.font.bodySmall
-                                    font.bold: true
+
+                                Row {
+                                    width: parent.width
+                                    spacing: Style.space(5)
+                                    Rectangle {
+                                        width: Style.space(7)
+                                        height: width
+                                        radius: width / 2
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        color: resultCard.modelData.status === "failed" || resultCard.modelData.status === "timeout"
+                                            ? Color.urgent : resultCard.tint
+                                    }
+                                    Text {
+                                        id: providerName
+                                        text: root.cliLabel(resultCard.modelData.cli)
+                                        color: resultCard.tint
+                                        font.family: root.fontFamily
+                                        font.pixelSize: Style.font.bodySmall
+                                        font.bold: true
+                                    }
+                                    Text {
+                                        width: Math.max(0, parent.width - providerName.implicitWidth - Style.space(20))
+                                        text: resultCard.modelData.model !== "" ? resultCard.modelData.model : "default"
+                                        color: root.dim
+                                        font.family: root.fontFamily
+                                        font.pixelSize: Style.font.caption
+                                        elide: Text.ElideRight
+                                    }
                                 }
+
                                 Text {
-                                    text: modelData.model !== "" ? modelData.model : "default"
-                                    color: root.dim
+                                    width: parent.width
+                                    text: Model.nerdLine(resultCard.modelData)
+                                    color: resultCard.modelData.status === "failed" || resultCard.modelData.status === "timeout"
+                                        ? Color.urgent : root.dim
                                     font.family: root.fontFamily
                                     font.pixelSize: Style.font.caption
                                     elide: Text.ElideRight
                                 }
-                            }
 
-                            Text {
-                                width: parent.width
-                                text: Model.nerdLine(modelData)
-                                color: modelData.status === "failed" || modelData.status === "timeout"
-                                    ? Color.urgent : root.dim
-                                font.family: root.fontFamily
-                                font.pixelSize: Style.font.caption
-                                elide: Text.ElideRight
-                            }
+                                Flickable {
+                                    id: answerViewport
+                                    width: parent.width
+                                    height: Math.min(answerText.implicitHeight,
+                                        resultCard.expanded ? Style.space(320) : resultCard.previewHeight)
+                                    contentWidth: width
+                                    contentHeight: answerText.implicitHeight
+                                    clip: true
+                                    interactive: resultCard.expanded && contentHeight > height
+                                    boundsBehavior: Flickable.StopAtBounds
 
-                            Text {
-                                width: parent.width
-                                text: bodyText
-                                color: modelData.answer !== "" ? root.ink
-                                    : (modelData.error !== "" ? Color.urgent : root.dim)
-                                font.family: root.fontFamily
-                                font.pixelSize: Style.font.bodySmall
-                                wrapMode: Text.Wrap
-                                maximumLineCount: expanded ? 24 : 6
-                                elide: expanded ? Text.ElideNone : Text.ElideRight
-                            }
-
-                            Row {
-                                spacing: Style.space(8)
-                                visible: modelData.answer !== ""
-                                Text {
-                                    text: "copy"
-                                    color: root.dim
-                                    font.pixelSize: Style.font.caption
-                                    font.family: root.fontFamily
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        anchors.margins: -3
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: root.copyAnswer(modelData.answer)
+                                    Text {
+                                        id: answerText
+                                        width: answerViewport.width
+                                        text: resultCard.modelData.answer !== ""
+                                            ? Model.markdownForDisplay(resultCard.bodyText)
+                                            : resultCard.bodyText
+                                        textFormat: resultCard.modelData.answer !== ""
+                                            ? Text.MarkdownText : Text.PlainText
+                                        color: resultCard.modelData.answer !== "" ? root.ink
+                                            : (resultCard.modelData.error !== "" ? Color.urgent : root.dim)
+                                        linkColor: resultCard.tint
+                                        font.family: root.fontFamily
+                                        font.pixelSize: Style.font.bodySmall
+                                        wrapMode: Text.Wrap
+                                        onLinkActivated: function(link) {
+                                            var safe = Model.externalLinkForDisplay(link)
+                                            if (safe) Qt.openUrlExternally(safe)
+                                        }
                                     }
                                 }
-                                Text {
-                                    text: expanded ? "less" : "more"
-                                    color: root.dim
-                                    font.pixelSize: Style.font.caption
-                                    font.family: root.fontFamily
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        anchors.margins: -3
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: root.toggleResultExpand(tKey)
+
+                                Row {
+                                    spacing: Style.space(10)
+                                    visible: resultCard.modelData.answer !== ""
+                                    Text {
+                                        text: "copy"
+                                        color: root.dim
+                                        font.pixelSize: Style.font.caption
+                                        font.family: root.fontFamily
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            anchors.margins: -3
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: root.copyAnswer(resultCard.modelData.answer)
+                                        }
+                                    }
+                                    Text {
+                                        visible: resultCard.hasMore
+                                        text: resultCard.expanded ? "less" : "more"
+                                        color: resultCard.tint
+                                        font.pixelSize: Style.font.caption
+                                        font.family: root.fontFamily
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            anchors.margins: -3
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: root.toggleResultExpand(resultCard.tKey)
+                                        }
                                     }
                                 }
-                            }
 
-                            Text {
-                                width: parent.width
-                                visible: modelData.answer !== ""
-                                text: "≈ " + Model.estimateTokens(modelData.answer) + " out"
-                                color: root.dim
-                                font.family: root.fontFamily
-                                font.pixelSize: Style.font.caption
+                                Text {
+                                    width: parent.width
+                                    visible: resultCard.modelData.answer !== ""
+                                    text: "≈ " + Model.estimateTokens(resultCard.modelData.answer) + " out"
+                                    color: root.dim
+                                    font.family: root.fontFamily
+                                    font.pixelSize: Style.font.caption
+                                }
                             }
                         }
                     }

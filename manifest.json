@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "dkfiander.disparchy",
   "name": "Disparchy",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "author": "Donnie Fiander",
   "license": "MIT",
-  "description": "Google-bar hangdown: one prompt line, provider checkboxes, parallel local AI CLIs.",
+  "description": "Comparison panel: one prompt, selected providers, parallel local AI answers.",
   "homepage": "https://github.com/DonnieFi/Disparchy",
   "repository": "https://github.com/DonnieFi/Disparchy",
   "kinds": [
@@ -16,7 +16,7 @@
   },
   "barWidget": {
     "displayName": "Disparchy",
-    "description": "One prompt, checkbox providers, parallel local AI CLIs.",
+    "description": "One prompt, parallel providers, side-by-side AI answers.",
     "category": "AI",
     "aliases": [
       "disparchy",

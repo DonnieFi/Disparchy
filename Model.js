@@ -185,6 +185,19 @@ function estimateTokens(text) {
     return Math.ceil(n / 4)
 }
 
+// Qt's Markdown renderer can fetch images. Keep formatting and links, but
+// turn image syntax into ordinary links and neutralize raw HTML image tags.
+function markdownForDisplay(text) {
+    return String(text || "")
+        .replace(/!\[/g, "[")
+        .replace(/<\s*img\b/gi, "&lt;img")
+}
+
+function externalLinkForDisplay(url) {
+    var value = String(url || "").trim()
+    return /^https?:\/\//i.test(value) ? value : ""
+}
+
 function runTokens(run) {
     var prompt = estimateTokens(run && run.prompt)
     var answers = 0

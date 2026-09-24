@@ -1,16 +1,16 @@
 <div align="center">
 
-<img src="docs/screenshots/ask-0.3.1.png" width="720" alt="Disparchy hangdown: one prompt, three checked providers, and a colored answer column for each">
+<img src="docs/screenshots/ask-0.4.0.png" width="720" alt="Disparchy Ask screen with a multiline prompt, selected providers, and stacked Clear and Send actions">
 
 # Disparchy
 
 **One prompt. The checked providers answer together.**
 
-Type a line in the bar. Disparchy sends it to the local CLIs you armed and puts each answer in its own column.
+Write one prompt, choose the providers, and compare their answers side by side. Disparchy brings local AI CLIs and compatible HTTP endpoints into one focused panel.
 
 [![Omarchy](https://img.shields.io/badge/Omarchy-plugin-00d3f2?style=flat-square)](https://omarchy.org)
 [![Quickshell](https://img.shields.io/badge/Quickshell-QML-5e81ac?style=flat-square)](https://quickshell.org)
-[![Version](https://img.shields.io/badge/version-0.3.1-4fc9d6?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.4.0-4fc9d6?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-a3be8c?style=flat-square)](LICENSE)
 
 Plugin id: `dkfiander.disparchy` · Install: `~/.config/omarchy/plugins/dkfiander.disparchy/`  
@@ -22,7 +22,7 @@ Repo: [DonnieFi/Disparchy](https://github.com/DonnieFi/Disparchy) · Architectur
 
 ## The idea
 
-You keep one prompt. Each checked provider runs on its own, with its own model, and a failure in one column leaves the others running.
+You keep one prompt. Each checked provider runs on its own with its own model, and a failure in one column leaves the others running. The Ask screen gives the prompt room, with Clear above Send and Cancel taking Send’s place while a run is active.
 
 | Provider | Talks to | Default |
 |----------|----------|---------|
@@ -36,17 +36,17 @@ You keep one prompt. Each checked provider runs on its own, with its own model, 
 | **Ollama** | `http://127.0.0.1:11434` | URL editable in **Setup** |
 | **LM Studio** | `http://127.0.0.1:1234` | URL editable in **Setup** |
 
-The first five sit on the bar until you change that in **Setup**. Model lists come from each CLI when you open the panel. Token counts at the bottom of a column, and in the footer, estimate tokens as the character count divided by 4, rounded up.
+The first five providers are shown on the bar by default. Change that in **Setup**, where providers sit in two columns with status, endpoint, and enable controls. Auto-paste is a Setup preference and starts off. Model lists come from each CLI when you open the panel. Token counts are estimates based on character count divided by four.
 
 <div align="center">
-<img src="docs/screenshots/setup-0.3.1.png" width="640" alt="Disparchy Setup: provider rows with sign-in status, enable switches, and HTTP URL fields">
+<img src="assets/dispatch-mark/dispatch-mark-preview.png" width="560" alt="Disparchy dispatch mark in light and dark colours">
 </div>
 
-**Setup** is where a provider joins the bar. The status word opens that CLI. Ollama and LM Studio take a URL on the same row.
+The dispatch mark carries the idea in one shape: one prompt opening into three
+answer lanes. The bar and panel header use the same mark, recoloured by the
+theme. Light and dark SVG/PNG files live in [`assets/dispatch-mark`](assets/dispatch-mark).
 
-<div align="center">
-<img src="docs/screenshots/bar-icon-0.3.1.png" width="160" alt="Disparchy bar mark, a small bar-chart glyph with the active underline">
-</div>
+History stores past runs locally. Comparison cards render common Markdown, and long answers stay in their own scrollable lanes. The screenshot above shows the blank Ask screen; the image below previews the theme-aware dispatch mark.
 
 ---
 
@@ -102,14 +102,15 @@ o.bind("SUPER + SHIFT + A", "Disparchy", "omarchy-shell shell toggle dkfiander.d
 
 | Action | How |
 |--------|-----|
-| Open or close | Click the bar-chart icon, or Super+Shift+A if you added the bind. Esc closes |
-| Ask | Type a prompt. Enter or **Send** |
+| Open or close | Click the dispatch mark, or Super+Shift+A if you added the bind. Esc closes |
+| Ask | Type a prompt. Enter or **Send** compares replies; Shift+Enter adds a line |
 | Arm a provider | Check its box. The arrow opens the model list |
 | Setup | **Setup** shows or hides providers on the bar. Click the status word to sign in |
 | History | **History** lists past runs. **Back** returns to the prompt |
-| Paste | **Paste** fills an empty prompt from the clipboard when you open the panel. Off until you turn it on |
+| Auto-paste | **Setup → Auto-paste clipboard** fills an empty prompt when the panel opens. Off by default |
 | Clear | **Clear** empties the prompt and hides the current answers. Dim when there is nothing to clear |
 | Cancel | **Cancel** shows while a run is in flight. Pending columns become `cancelled` |
+| Read an answer | Markdown formatting is shown in each result card. **More** expands a long answer into a scrollable lane; **copy** keeps the original text |
 
 A checkbox arms that provider for the next send. **Setup** decides whether the provider appears on the row at all. HTTP rows stay available when enabled, even if the server is down.
 
@@ -147,7 +148,7 @@ Bar-widget settings, also stored in `shell.json` under the widget entry:
 | `modelAntigravity` | empty | Empty means the CLI default |
 | `modelCursor` | empty | Empty means the CLI default |
 
-Which providers are on the bar, which models you picked, and whether **Paste** is on, live in `selection.json`. That file is not in the widget schema.
+Which providers are on the bar, which models you picked, and whether auto-paste is on, live in `selection.json`. That file is not in the widget schema.
 
 Runtime state lives under `$XDG_STATE_HOME/omarchy/dkfiander.disparchy/`. When that variable is unset, the directory is `~/.local/state/omarchy/dkfiander.disparchy/`. The directory is mode `0700`. Files are mode `0600`. Nothing here is written into the plugin tree, because the shell watches that tree and reloads on every write.
 
@@ -177,7 +178,7 @@ That disables and removes the plugin checkout or symlink. Runtime state under `~
 |------|-----------|-------|
 | Omarchy 4 / Quattro + Quickshell | yes | Bar widget host |
 | Python 3 | yes | `bin/disparchy-run`, stdlib only |
-| `wl-paste` and `wl-copy` | for **Paste** and **copy** | Text clipboard |
+| `wl-paste` and `wl-copy` | for auto-paste and **copy** | Text clipboard |
 | `claude`, `codex`, `grok`, `agy`, `cursor-agent` | optional | Each one you want on the row |
 | `openclaw` | optional | Gateway on port 18789, otherwise the local node |
 | `hermes` | optional | Must already be the real CLI. A stub installer at that name will run on **Send** |
@@ -197,6 +198,8 @@ omarchy-shell shell hide dkfiander.disparchy
 omarchy-shell dkfiander.disparchy open
 omarchy-shell dkfiander.disparchy close
 omarchy-shell dkfiander.disparchy toggle
+omarchy-shell dkfiander.disparchy setup
+omarchy-shell dkfiander.disparchy history
 ```
 
 The panel does not register a second IPC handler. Open, close, show, hide, and toggle are on the bar widget.

@@ -34,6 +34,18 @@ Thumbs.db
 *~
 scratch/
 
+# Per-user plugin state; normally kept outside this repository.
+auth.json
+selection.json
+history.json
+prompt.txt
+status.json
+
+# Screenshots can capture local endpoints, prompts, or provider sign-in state.
+# Allow only the reviewed blank Ask view in the public README.
+docs/screenshots/*
+!docs/screenshots/ask-0.4.0.png
+
 # Beads / Dolt files (added by bd init)
 .dolt/
 *.db
