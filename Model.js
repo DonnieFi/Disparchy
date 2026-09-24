@@ -320,6 +320,16 @@ function escapeTarget(confirmOpen, menuOpen) {
     return "panel"
 }
 
+function widthCount(armedCount, runProviderCount) {
+    var armed = parseInt(armedCount, 10)
+    if (!isFinite(armed) || armed < 0)
+        armed = 0
+    var run = parseInt(runProviderCount, 10)
+    if (!isFinite(run) || run < 0)
+        run = 0
+    return Math.max(armed, run)
+}
+
 function panelWidth(providerCount, screenWidth, minWidth, colWidth, gap, insets) {
     var count = parseInt(providerCount, 10)
     if (!isFinite(count) || count < 1)

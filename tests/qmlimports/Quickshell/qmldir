@@ -1,0 +1,4 @@
+module Quickshell
+singleton Quickshell 1.0 Quickshell.qml
+Panel 1.0 Panel.qml
+BarWidget 1.0 BarWidget.qml
