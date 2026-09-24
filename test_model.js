@@ -326,4 +326,29 @@ eq(M.escapeTarget(false, true), "menu", "escape closes the menu first")
 eq(M.escapeTarget(true, false), "confirm", "escape cancels confirm before the panel")
 eq(M.escapeTarget(true, true), "confirm", "escape cancels confirm before the menu")
 
+eq(M.columnLayout(960, 1, 8, 280), {
+    width: 960, overflow: false, contentWidth: 960
+}, "one column uses the full width")
+eq(M.columnLayout(960, 2, 8, 280), {
+    width: (960 - 8) / 2, overflow: false, contentWidth: 960
+}, "two columns split evenly")
+eq(M.columnLayout(960, 3, 8, 280), {
+    width: (960 - 16) / 3, overflow: false, contentWidth: 960
+}, "three columns split evenly")
+eq(M.columnLayout(856, 3, 8, 280), {
+    width: 280, overflow: false, contentWidth: 856
+}, "columns at the minimum still fit")
+eq(M.columnLayout(855, 3, 8, 280), {
+    width: 280, overflow: true, contentWidth: 856
+}, "one pixel under the minimum overflows")
+eq(M.columnLayout(960, 4, 8, 280), {
+    width: 280, overflow: true, contentWidth: 4 * 280 + 8 * 3
+}, "four columns floor at the minimum")
+eq(M.columnLayout(960, 6, 8, 280), {
+    width: 280, overflow: true, contentWidth: 6 * 280 + 8 * 5
+}, "six columns floor at the minimum")
+eq(M.columnLayout(960, 0, 8, 280), {
+    width: 0, overflow: false, contentWidth: 0
+}, "no columns is safe")
+
 process.stdout.write("ok\n")

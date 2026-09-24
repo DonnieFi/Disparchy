@@ -320,6 +320,19 @@ function escapeTarget(confirmOpen, menuOpen) {
     return "panel"
 }
 
+function columnLayout(available, count, spacing, minWidth) {
+    var n = parseInt(count, 10)
+    if (!isFinite(n) || n < 1)
+        return { width: 0, overflow: false, contentWidth: 0 }
+    var gaps = Number(spacing) * (n - 1)
+    var even = (Number(available) - gaps) / n
+    var floor = Number(minWidth)
+    var overflow = even < floor
+    var width = overflow ? floor : even
+    var contentWidth = overflow ? n * floor + gaps : Number(available)
+    return { width: width, overflow: overflow, contentWidth: contentWidth }
+}
+
 function needsSecret(cli) {
     var row = providerOf(cli)
     return !!(row && row.auth)
