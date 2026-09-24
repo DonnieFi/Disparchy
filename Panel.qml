@@ -742,6 +742,18 @@ Panel {
     Slot { id: slot4 }
     Slot { id: slot5 }
 
+    component ResultRowWheel: WheelHandler {
+        required property Flickable row
+        acceptedModifiers: Qt.ShiftModifier
+        orientation: Qt.Vertical
+        blocking: true
+        onWheel: function(wheel) {
+            var dy = wheel.angleDelta.y !== 0 ? wheel.angleDelta.y : wheel.pixelDelta.y
+            var maxX = Math.max(0, row.contentWidth - row.width)
+            row.contentX = Math.max(0, Math.min(maxX, row.contentX - dy / 120 * 72))
+        }
+    }
+
     component TabAction: Rectangle {
         id: act
         property string label: ""
@@ -1793,9 +1805,14 @@ Panel {
 
                 }
 
+                Item {
+                    id: resultArea
+                    width: parent.width
+                    visible: !root.setupOpen && root.displayRun && root.displayRun.targets && root.displayRun.targets.length > 0
+                    height: resultView.height
+
                 Flickable {
                     id: resultView
-                    visible: !root.setupOpen && root.displayRun && root.displayRun.targets && root.displayRun.targets.length > 0
                     width: parent.width
                     height: resultRow.implicitHeight
                     contentWidth: columns.contentWidth
@@ -1809,20 +1826,10 @@ Panel {
                     readonly property var columns: Model.columnLayout(
                         width, paper.count, Style.space(8), Style.space(280))
 
-                    // Qt does not turn Shift+wheel into a horizontal delta.
-                    // This handler does, for the card chrome outside the answer lane.
-                    // A touchpad already arrives as a horizontal pixel delta, which
-                    // HorizontalFlick scrolls on its own.
-                    WheelHandler {
-                        acceptedModifiers: Qt.ShiftModifier
-                        orientation: Qt.Vertical
-                        blocking: true
-                        onWheel: function(wheel) {
-                            var dy = wheel.angleDelta.y !== 0 ? wheel.angleDelta.y : wheel.pixelDelta.y
-                            var maxX = Math.max(0, resultView.contentWidth - resultView.width)
-                            resultView.contentX = Math.max(0, Math.min(maxX, resultView.contentX - dy / 120 * 72))
-                        }
-                    }
+                    // Shift+wheel stays a vertical delta. Qt does not remap it,
+                    // so this handler moves the row. A horizontal touchpad delta
+                    // reaches HorizontalFlick on its own.
+                    ResultRowWheel { row: resultView }
 
                     Row {
                         id: resultRow
@@ -1931,18 +1938,7 @@ Panel {
                                     boundsBehavior: Flickable.StopAtBounds
                                     flickableDirection: Flickable.VerticalFlick
 
-                                    // Shift+wheel is still a vertical delta. Take it here, before
-                                    // this lane scrolls, and move the result row instead.
-                                    WheelHandler {
-                                        acceptedModifiers: Qt.ShiftModifier
-                                        orientation: Qt.Vertical
-                                        blocking: true
-                                        onWheel: function(wheel) {
-                                            var dy = wheel.angleDelta.y !== 0 ? wheel.angleDelta.y : wheel.pixelDelta.y
-                                            var maxX = Math.max(0, resultView.contentWidth - resultView.width)
-                                            resultView.contentX = Math.max(0, Math.min(maxX, resultView.contentX - dy / 120 * 72))
-                                        }
-                                    }
+                                    ResultRowWheel { row: resultView }
 
                                     Text {
                                         id: answerText
@@ -2041,14 +2037,14 @@ Panel {
                     }
 
                     ScrollBar.horizontal: ScrollBar {
-                        parent: resultView.parent
+                        parent: resultArea
                         padding: 0
                         interactive: false
                         height: Style.space(4)
                         width: resultView.width
                         x: resultView.x
                         y: resultView.y + resultView.height + (panel.padding - height) / 2
-                        policy: resultView.visible && resultView.columns.overflow
+                        policy: resultArea.visible && resultView.columns.overflow
                             ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
                         contentItem: Rectangle {
                             implicitHeight: Style.space(4)
@@ -2059,6 +2055,7 @@ Panel {
                             color: "transparent"
                         }
                     }
+                }
                 }
 
                 Item {
