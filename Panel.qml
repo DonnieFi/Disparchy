@@ -1608,6 +1608,7 @@ Panel {
                         ScrollBar.vertical: ScrollBar {
                             parent: setupView.parent
                             padding: 0
+                            interactive: false
                             width: Style.space(4)
                             height: setupView.height
                             x: setupView.x + setupView.width + (panel.padding - width) / 2
