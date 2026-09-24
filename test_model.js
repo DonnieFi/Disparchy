@@ -296,4 +296,40 @@ eq(
     "token footer"
 )
 
+const listed = M.cliList()
+const commandGroup = []
+const endpointGroup = []
+for (var i = 0; i < listed.length; i++) {
+    if (M.needsEndpoint(listed[i].id)) endpointGroup.push(listed[i])
+    else commandGroup.push(listed[i])
+}
+is(commandGroup.length > 0, "command-line group is non-empty")
+is(endpointGroup.length > 0, "endpoint group is non-empty")
+is(commandGroup.length + endpointGroup.length === listed.length, "group sizes sum to cliList length")
+const hits = {}
+var commandAt = -1
+for (var c = 0; c < commandGroup.length; c++) {
+    var commandId = commandGroup[c].id
+    var commandIndex = -1
+    for (var b = 0; b < listed.length; b++)
+        if (listed[b].id === commandId) commandIndex = b
+    is(M.needsEndpoint(commandId) === false, "command-line group does not need an endpoint")
+    is(commandIndex > commandAt, "command-line group keeps cliList order")
+    commandAt = commandIndex
+    hits[commandId] = (hits[commandId] || 0) + 1
+}
+var endpointAt = -1
+for (var e = 0; e < endpointGroup.length; e++) {
+    var endpointId = endpointGroup[e].id
+    var endpointIndex = -1
+    for (var g = 0; g < listed.length; g++)
+        if (listed[g].id === endpointId) endpointIndex = g
+    is(M.needsEndpoint(endpointId) === true, "endpoint group needs an endpoint")
+    is(endpointIndex > endpointAt, "endpoint group keeps cliList order")
+    endpointAt = endpointIndex
+    hits[endpointId] = (hits[endpointId] || 0) + 1
+}
+for (var n = 0; n < listed.length; n++)
+    is(hits[listed[n].id] === 1, "every entry lands in exactly one group")
+
 process.stdout.write("ok\n")

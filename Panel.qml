@@ -162,6 +162,16 @@ Panel {
         return cli
     }
 
+    function setupGroup(wantEndpoint) {
+        var list = Model.cliList()
+        var out = []
+        for (var i = 0; i < list.length; i++) {
+            var endpoint = Model.needsEndpoint(list[i].id)
+            if (wantEndpoint ? endpoint : !endpoint) out.push(list[i])
+        }
+        return out
+    }
+
     function notePicker(open) {
         root.openPickers = Math.max(0, root.openPickers + (open ? 1 : -1))
     }
@@ -1287,12 +1297,17 @@ Panel {
                             columnSpacing: Style.space(10)
                             rowSpacing: Style.space(10)
 
-                            Repeater {
-                                model: Model.cliList()
-                                delegate: Rectangle {
+                            Component {
+                                id: setupCardDelegate
+                                Rectangle {
                                     id: setupCard
                                     required property var modelData
-                                    width: (setupGrid.width - setupGrid.columnSpacing) / 2
+                                    width: {
+                                        var cols = parent && parent.columns > 0 ? parent.columns : 1
+                                        var gap = parent ? parent.columnSpacing : 0
+                                        var span = parent ? parent.width : 0
+                                        return (span - gap * (cols - 1)) / cols
+                                    }
                                     height: setupRow.implicitHeight + Style.space(16)
                                     radius: Style.space(9)
                                     color: Qt.alpha(setupRow.tint, 0.07)
@@ -1486,6 +1501,32 @@ Panel {
                                         }
                                     }
                                 }
+                            }
+
+                            Repeater {
+                                model: root.setupGroup(false)
+                                delegate: setupCardDelegate
+                            }
+                        }
+
+                        Text {
+                            text: "Endpoints"
+                            color: root.dim
+                            font.family: root.fontFamily
+                            font.pixelSize: Style.font.caption
+                            font.bold: true
+                        }
+
+                        Grid {
+                            id: endpointGrid
+                            width: parent.width
+                            columns: 1
+                            columnSpacing: Style.space(10)
+                            rowSpacing: Style.space(10)
+
+                            Repeater {
+                                model: root.setupGroup(true)
+                                delegate: setupCardDelegate
                             }
                         }
 
