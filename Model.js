@@ -314,6 +314,12 @@ function setupGroup(wantEndpoint) {
     return out
 }
 
+function escapeTarget(confirmOpen, menuOpen) {
+    if (confirmOpen) return "confirm"
+    if (menuOpen) return "menu"
+    return "panel"
+}
+
 function needsSecret(cli) {
     var row = providerOf(cli)
     return !!(row && row.auth)

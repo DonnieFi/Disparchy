@@ -321,4 +321,9 @@ checkGroup(endpointGroup, true)
 for (var n = 0; n < listed.length; n++)
     is(seen[listed[n].id] === 1, "every entry lands in exactly one group")
 
+eq(M.escapeTarget(false, false), "panel", "escape closes the panel")
+eq(M.escapeTarget(false, true), "menu", "escape closes the menu first")
+eq(M.escapeTarget(true, false), "confirm", "escape cancels confirm before the panel")
+eq(M.escapeTarget(true, true), "confirm", "escape cancels confirm before the menu")
+
 process.stdout.write("ok\n")
