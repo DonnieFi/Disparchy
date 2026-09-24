@@ -320,17 +320,23 @@ function escapeTarget(confirmOpen, menuOpen) {
     return "panel"
 }
 
-function columnLayout(available, count, spacing, minWidth) {
-    var n = parseInt(count, 10)
-    if (!isFinite(n) || n < 1)
-        return { width: 0, overflow: false, contentWidth: 0 }
-    var gaps = Number(spacing) * (n - 1)
-    var even = (Number(available) - gaps) / n
-    var floor = Number(minWidth)
-    var overflow = even < floor
-    var width = overflow ? floor : even
-    var contentWidth = overflow ? n * floor + gaps : Number(available)
-    return { width: width, overflow: overflow, contentWidth: contentWidth }
+// Columns that fit across the result area. 280 and 8 match Style.space at
+// scale 1: two columns need 568, three need 856. Always at least one.
+function resultColumns(panelWidth, providerCount) {
+    var count = parseInt(providerCount, 10)
+    if (!isFinite(count) || count < 1)
+        count = 1
+    var width = Number(panelWidth)
+    if (!isFinite(width))
+        width = 0
+    var cols = 1
+    if (width >= 280 * 2 + 8)
+        cols = 2
+    if (width >= 280 * 3 + 8 * 2)
+        cols = 3
+    if (cols > count)
+        cols = count
+    return cols
 }
 
 function needsSecret(cli) {

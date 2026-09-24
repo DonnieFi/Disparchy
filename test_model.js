@@ -326,29 +326,29 @@ eq(M.escapeTarget(false, true), "menu", "escape closes the menu first")
 eq(M.escapeTarget(true, false), "confirm", "escape cancels confirm before the panel")
 eq(M.escapeTarget(true, true), "confirm", "escape cancels confirm before the menu")
 
-eq(M.columnLayout(960, 1, 8, 280), {
-    width: 960, overflow: false, contentWidth: 960
-}, "one column uses the full width")
-eq(M.columnLayout(960, 2, 8, 280), {
-    width: (960 - 8) / 2, overflow: false, contentWidth: 960
-}, "two columns split evenly")
-eq(M.columnLayout(960, 3, 8, 280), {
-    width: (960 - 16) / 3, overflow: false, contentWidth: 960
-}, "three columns split evenly")
-eq(M.columnLayout(856, 3, 8, 280), {
-    width: 280, overflow: false, contentWidth: 856
-}, "columns at the minimum still fit")
-eq(M.columnLayout(855, 3, 8, 280), {
-    width: 280, overflow: true, contentWidth: 856
-}, "one pixel under the minimum overflows")
-eq(M.columnLayout(960, 4, 8, 280), {
-    width: 280, overflow: true, contentWidth: 4 * 280 + 8 * 3
-}, "four columns floor at the minimum")
-eq(M.columnLayout(960, 6, 8, 280), {
-    width: 280, overflow: true, contentWidth: 6 * 280 + 8 * 5
-}, "six columns floor at the minimum")
-eq(M.columnLayout(960, 0, 8, 280), {
-    width: 0, overflow: false, contentWidth: 0
-}, "no columns is safe")
+eq(M.resultColumns(0, 5), 1, "width 0 gives 1")
+eq(M.resultColumns(279, 5), 1, "width 279 gives 1")
+eq(M.resultColumns(630, 0), 1, "0 providers gives 1")
+eq(M.resultColumns(567, 5), 1, "one pixel under two columns gives 1")
+eq(M.resultColumns(568, 5), 2, "exact two-column boundary gives 2")
+eq(M.resultColumns(855, 5), 2, "one pixel under three columns gives 2")
+eq(M.resultColumns(856, 5), 3, "exact three-column boundary gives 3")
+
+// hangWidth while a run is showing, spacing scale 1:
+// max(520, min(960, 210 * n))
+function hangWidth(providers) {
+    var n = Math.max(1, providers)
+    return Math.max(520, Math.min(960, 210 * n))
+}
+eq(hangWidth(1), 520, "1 provider panel is 520")
+eq(hangWidth(2), 520, "2 provider panel is 520")
+eq(hangWidth(3), 630, "3 provider panel is 630")
+eq(hangWidth(4), 840, "4 provider panel is 840")
+eq(hangWidth(5), 960, "5 provider panel is 960")
+eq(M.resultColumns(hangWidth(1), 1), 1, "1 provider at 520 gives 1")
+eq(M.resultColumns(hangWidth(2), 2), 1, "2 providers at 520 gives 1")
+eq(M.resultColumns(hangWidth(3), 3), 2, "3 providers at 630 gives 2")
+eq(M.resultColumns(hangWidth(4), 4), 2, "4 providers at 840 gives 2")
+eq(M.resultColumns(hangWidth(5), 5), 3, "5 providers at 960 gives 3")
 
 process.stdout.write("ok\n")
