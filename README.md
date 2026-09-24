@@ -67,10 +67,10 @@ omarchy plugin add https://github.com/DonnieFi/Disparchy.git --enable
 omarchy bar move dkfiander.disparchy --section right
 ```
 
-Dev symlink, when this checkout is the plugin root:
+From a checkout, `./install` copies the files the shell loads into `~/.config/omarchy/plugins/dkfiander.disparchy`. A symlink is replaced. An existing copy is refreshed. Runtime state under `$XDG_STATE_HOME/omarchy/dkfiander.disparchy/` is left alone.
 
 ```bash
-ln -sfn /path/to/Disparchy ~/.config/omarchy/plugins/dkfiander.disparchy
+./install
 omarchy-shell shell rescanPlugins
 omarchy plugin enable dkfiander.disparchy
 ```
@@ -176,7 +176,7 @@ Runtime state lives under `$XDG_STATE_HOME/omarchy/dkfiander.disparchy/`. When t
 omarchy plugin remove dkfiander.disparchy
 ```
 
-That disables and removes the plugin checkout or symlink. Runtime state under `~/.local/state/omarchy/dkfiander.disparchy/` is left alone. Delete that directory if you want a clean slate.
+That disables and removes the installed plugin. Runtime state under `~/.local/state/omarchy/dkfiander.disparchy/` is left alone. Delete that directory if you want a clean slate.
 
 ---
 

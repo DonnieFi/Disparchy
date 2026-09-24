@@ -1,0 +1,87 @@
+#!/bin/sh
+# Copy the files the shell loads into ~/.config/omarchy/plugins/dkfiander.disparchy.
+# Runtime state under $XDG_STATE_HOME is never read or written.
+set -eu
+
+src=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+
+config_home=${XDG_CONFIG_HOME:-"$HOME/.config"}
+plugins=$config_home/omarchy/plugins
+target=$plugins/dkfiander.disparchy
+# Same filesystem as plugins/, but outside plugins/, so a half-built tree
+# is never a directory the shell can load.
+omarchy=$(dirname -- "$plugins")
+tmp=$omarchy/.disparchy-install.tmp
+bak=$omarchy/.disparchy-install.bak
+
+die() {
+    echo "install: $*" >&2
+    exit 1
+}
+
+cleanup() {
+    status=$?
+    rm -rf -- "$tmp"
+    trap - EXIT
+    exit "$status"
+}
+trap cleanup EXIT
+
+rm -rf -- "$tmp"
+mkdir -p -- "$plugins" "$tmp/bin"
+
+copy_file() {
+    rel=$1
+    if [ ! -f "$src/$rel" ]; then
+        die "missing source file $rel"
+    fi
+    cp -p -- "$src/$rel" "$tmp/$rel"
+}
+
+# What manifest.json and the QML actually load. Nothing else is shipped.
+copy_file manifest.json
+if [ "${DISPARCHY_INSTALL_FAIL:-}" = "copy" ]; then
+    die "injected copy failure"
+fi
+copy_file BarWidget.qml
+copy_file Panel.qml
+copy_file Model.js
+copy_file DisparchyIcon.qml
+copy_file bin/disparchy-run
+
+# Missing target: one rename. A symlink is not a directory, and Linux
+# rename(2) returns ENOTDIR if asked to replace it with one, so the link
+# itself is removed first (the referent is left alone) and restored if
+# the rename fails.
+if [ -L "$target" ]; then
+    link_to=$(readlink -- "$target") || die "could not read existing symlink"
+    rm -- "$target"
+    if ! mv -T -- "$tmp" "$target"; then
+        ln -s -- "$link_to" "$target" || die "could not restore symlink $target"
+        die "could not replace symlink $target"
+    fi
+elif [ ! -e "$target" ]; then
+    mv -T -- "$tmp" "$target"
+elif [ -d "$target" ]; then
+    # A real directory, empty or not. rename(2) cannot replace a non-empty
+    # directory, so move it aside and move the new tree in. If that second
+    # move fails, put the previous directory back.
+    rm -rf -- "$bak"
+    mv -T -- "$target" "$bak"
+    if [ "${DISPARCHY_INSTALL_FAIL:-}" = "swap" ] || ! mv -T -- "$tmp" "$target"; then
+        if ! mv -T -- "$bak" "$target"; then
+            die "restore failed; previous install left at $bak"
+        fi
+        if [ "${DISPARCHY_INSTALL_FAIL:-}" = "swap" ]; then
+            die "injected swap failure"
+        fi
+        die "could not move the new install into place"
+    fi
+    rm -rf -- "$bak"
+else
+    die "$target exists and is not a directory or symlink"
+fi
+
+if [ -e "$bak" ] || [ -L "$bak" ]; then
+    rm -rf -- "$bak"
+fi
