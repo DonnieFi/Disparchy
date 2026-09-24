@@ -296,4 +296,29 @@ eq(
     "token footer"
 )
 
+const listed = M.cliList()
+const commandGroup = M.setupGroup(false)
+const endpointGroup = M.setupGroup(true)
+is(commandGroup.length > 0, "command-line group is non-empty")
+is(endpointGroup.length > 0, "endpoint group is non-empty")
+is(commandGroup.length + endpointGroup.length === listed.length, "group sizes sum to cliList length")
+const seen = {}
+function checkGroup(group, want) {
+    var prev = -1
+    for (var i = 0; i < group.length; i++) {
+        var id = group[i].id
+        var at = -1
+        for (var j = 0; j < listed.length; j++)
+            if (listed[j].id === id) at = j
+        is(M.needsEndpoint(id) === want, "group matches needsEndpoint")
+        is(at > prev, "group keeps cliList order")
+        prev = at
+        seen[id] = (seen[id] || 0) + 1
+    }
+}
+checkGroup(commandGroup, false)
+checkGroup(endpointGroup, true)
+for (var n = 0; n < listed.length; n++)
+    is(seen[listed[n].id] === 1, "every entry lands in exactly one group")
+
 process.stdout.write("ok\n")

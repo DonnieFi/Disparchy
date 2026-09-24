@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import Quickshell
 import Quickshell.Io
 import qs.Commons
@@ -811,6 +812,7 @@ Panel {
                 spacing: Style.space(8)
 
                 Column {
+                    id: headerCol
                     width: parent.width
                     spacing: Style.space(8)
 
@@ -1155,7 +1157,7 @@ Panel {
 
                 Item {
                     width: parent.width
-                    height: root.setupOpen ? setupCol.implicitHeight
+                    height: root.setupOpen ? setupView.height
                         : (root.historyOpen ? histCol.implicitHeight
                             : providerFlow.y + providerFlow.height
                                 + (root.menuCli !== "" ? modelMenu.height + Style.space(4) : 0))
@@ -1266,9 +1268,29 @@ Panel {
                         }
                     }
 
-                    Column {
-                        id: setupCol
+                    Flickable {
+                        id: setupView
                         visible: root.setupOpen
+                        width: parent.width
+                        height: Math.min(setupCol.implicitHeight, room)
+                        contentWidth: width
+                        contentHeight: setupCol.implicitHeight
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
+                        flickableDirection: Flickable.VerticalFlick
+                        onVisibleChanged: if (visible) contentY = 0
+
+                        readonly property real room: {
+                            var content = setupCol.implicitHeight
+                            if (!(panel.availableCardHeight > 0))
+                                return content
+                            var inner = panel.availableCardHeight - panel.verticalContentInset
+                            var chrome = headerCol.implicitHeight + body.spacing
+                            return Math.max(0, inner - chrome)
+                        }
+
+                        Column {
+                        id: setupCol
                         width: parent.width
                         spacing: Style.space(10)
 
@@ -1287,12 +1309,17 @@ Panel {
                             columnSpacing: Style.space(10)
                             rowSpacing: Style.space(10)
 
-                            Repeater {
-                                model: Model.cliList()
-                                delegate: Rectangle {
+                            Component {
+                                id: setupCardDelegate
+                                Rectangle {
                                     id: setupCard
                                     required property var modelData
-                                    width: (setupGrid.width - setupGrid.columnSpacing) / 2
+                                    width: {
+                                        var cols = parent && parent.columns > 0 ? parent.columns : 1
+                                        var gap = parent ? parent.columnSpacing : 0
+                                        var span = parent ? parent.width : 0
+                                        return (span - gap * (cols - 1)) / cols
+                                    }
                                     height: setupRow.implicitHeight + Style.space(16)
                                     radius: Style.space(9)
                                     color: Qt.alpha(setupRow.tint, 0.07)
@@ -1487,6 +1514,32 @@ Panel {
                                     }
                                 }
                             }
+
+                            Repeater {
+                                model: Model.setupGroup(false)
+                                delegate: setupCardDelegate
+                            }
+                        }
+
+                        Text {
+                            text: "Endpoints"
+                            color: root.dim
+                            font.family: root.fontFamily
+                            font.pixelSize: Style.font.caption
+                            font.bold: true
+                        }
+
+                        Grid {
+                            id: endpointGrid
+                            width: parent.width
+                            columns: 1
+                            columnSpacing: Style.space(10)
+                            rowSpacing: Style.space(10)
+
+                            Repeater {
+                                model: Model.setupGroup(true)
+                                delegate: setupCardDelegate
+                            }
                         }
 
                         Text {
@@ -1548,6 +1601,27 @@ Panel {
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: root.setAutoPaste(!Model.autoPasteOn(root.selection))
                                 }
+                            }
+                        }
+                    }
+
+                        ScrollBar.vertical: ScrollBar {
+                            parent: setupView.parent
+                            padding: 0
+                            interactive: false
+                            width: Style.space(4)
+                            height: setupView.height
+                            x: setupView.x + setupView.width + (panel.padding - width) / 2
+                            y: setupView.y
+                            policy: root.setupOpen && setupView.contentHeight > setupView.height
+                                ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+                            contentItem: Rectangle {
+                                implicitWidth: Style.space(4)
+                                radius: width / 2
+                                color: root.dim
+                            }
+                            background: Rectangle {
+                                color: "transparent"
                             }
                         }
                     }
