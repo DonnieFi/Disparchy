@@ -54,7 +54,7 @@ The dispatch mark carries the idea in one shape: one prompt opening into three
 answer lanes. The bar and panel header use the same mark, recoloured by the
 theme. Light and dark SVG/PNG files live in [`assets/dispatch-mark`](assets/dispatch-mark).
 
-History stores past runs locally. Comparison cards render common Markdown, and long answers stay in their own scrollable lanes. The screenshot above shows the blank Ask screen; the image below previews the theme-aware dispatch mark.
+History stores past runs locally. Comparison cards render common Markdown and grow with the answer. When the grid is taller than the screen, the result area scrolls vertically. The screenshot above shows the blank Ask screen; the image below previews the theme-aware dispatch mark.
 
 ---
 
@@ -118,7 +118,7 @@ o.bind("SUPER + SHIFT + A", "Disparchy", "omarchy-shell shell toggle dkfiander.d
 | Auto-paste | **Setup → Auto-paste clipboard** fills an empty prompt when the panel opens. Off by default |
 | Clear | **Clear** empties the prompt and hides the current answers. Dim when there is nothing to clear |
 | Cancel | **Cancel** shows while a run is in flight. Pending columns become `cancelled` |
-| Read an answer | Markdown formatting is shown in each result card. **More** expands a long answer into a scrollable lane; **copy** keeps the original text |
+| Read an answer | Markdown formatting is shown in each result card, which grows with the answer. The result area scrolls vertically when the grid is taller than the screen. **Copy** keeps the original text |
 
 A checkbox arms that provider for the next send. **Setup** decides whether the provider appears on the row at all. HTTP rows stay available when enabled, even if the server is down.
 

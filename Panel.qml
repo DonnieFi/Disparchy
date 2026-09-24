@@ -47,7 +47,6 @@ Panel {
     property bool historyPrimed: false
     property bool clearConfirmOpen: false
     property bool cancelRequested: false
-    property var resultExpand: ({})
 
     readonly property string home: Quickshell.env("HOME") || ""
     readonly property string stateRoot: Model.stateDir(home, Quickshell.env("XDG_STATE_HOME"))
@@ -380,15 +379,6 @@ Panel {
         for (var i = 0; i < providerStatus.length; i++)
             if (providerStatus[i].cli === cli) return providerStatus[i]
         return { cli: cli, installed: "missing", auth: "" }
-    }
-
-    function toggleResultExpand(key) {
-        var next = {}
-        for (var k in root.resultExpand)
-            if (Object.prototype.hasOwnProperty.call(root.resultExpand, k))
-                next[k] = root.resultExpand[k]
-        next[key] = !next[key]
-        root.resultExpand = next
     }
 
     function slotList() {
@@ -742,18 +732,6 @@ Panel {
     Slot { id: slot4 }
     Slot { id: slot5 }
 
-    component ResultRowWheel: WheelHandler {
-        required property Flickable row
-        acceptedModifiers: Qt.ShiftModifier
-        orientation: Qt.Vertical
-        blocking: true
-        onWheel: function(wheel) {
-            var dy = wheel.angleDelta.y !== 0 ? wheel.angleDelta.y : wheel.pixelDelta.y
-            var maxX = Math.max(0, row.contentWidth - row.width)
-            row.contentX = Math.max(0, Math.min(maxX, row.contentX - dy / 120 * 72))
-        }
-    }
-
     component TabAction: Rectangle {
         id: act
         property string label: ""
@@ -938,6 +916,7 @@ Panel {
                 }
 
                 Row {
+                    id: promptRow
                     visible: !root.setupOpen && !root.historyOpen
                     width: parent.width
                     spacing: Style.space(8)
@@ -1173,6 +1152,7 @@ Panel {
                 }
 
                 Item {
+                    id: askBlock
                     width: parent.width
                     height: root.setupOpen ? setupView.height
                         : (root.historyOpen ? histCol.implicitHeight
@@ -1814,26 +1794,41 @@ Panel {
                 Flickable {
                     id: resultView
                     width: parent.width
-                    height: resultRow.implicitHeight
-                    contentWidth: columns.contentWidth
-                    contentHeight: height
+                    height: Math.min(resultGrid.implicitHeight, room)
+                    contentWidth: width
+                    contentHeight: resultGrid.implicitHeight
                     clip: true
                     boundsBehavior: Flickable.StopAtBounds
-                    flickableDirection: Flickable.HorizontalFlick
-                    interactive: columns.overflow
-                    onContentWidthChanged: if (contentWidth <= width) contentX = 0
+                    flickableDirection: Flickable.VerticalFlick
 
-                    readonly property var columns: Model.columnLayout(
-                        width, paper.count, Style.space(8), Style.space(280))
+                    // Same cap as Setup: the card stays within availableCardHeight.
+                    // Ask also has the prompt, the provider row, and the footer,
+                    // so those count as chrome above and below this view.
+                    readonly property real room: {
+                        var content = resultGrid.implicitHeight
+                        if (!(panel.availableCardHeight > 0))
+                            return content
+                        var inner = panel.availableCardHeight - panel.verticalContentInset
+                        var chromeItems = 1
+                            + (promptRow.visible ? 1 : 0)
+                            + 1
+                            + (resultFooter.visible ? 1 : 0)
+                        var chrome = headerCol.implicitHeight
+                            + (promptRow.visible ? promptRow.implicitHeight : 0)
+                            + askBlock.height
+                            + (resultFooter.visible ? resultFooter.height : 0)
+                            + body.spacing * chromeItems
+                        return Math.max(0, inner - chrome)
+                    }
 
-                    // Shift+wheel stays a vertical delta. Qt does not remap it,
-                    // so this handler moves the row. A horizontal touchpad delta
-                    // reaches HorizontalFlick on its own.
-                    ResultRowWheel { row: resultView }
+                    readonly property int columns: Model.resultColumns(width, paper.count)
 
-                    Row {
-                        id: resultRow
-                        spacing: Style.space(8)
+                    Grid {
+                        id: resultGrid
+                        width: parent.width
+                        columns: resultView.columns
+                        columnSpacing: Style.space(8)
+                        rowSpacing: Style.space(8)
 
                     Repeater {
                         id: paper
@@ -1841,17 +1836,18 @@ Panel {
                         delegate: Item {
                             id: resultCard
                             required property var modelData
-                            width: resultView.columns.width
+                            width: {
+                                var cols = parent && parent.columns > 0 ? parent.columns : 1
+                                var gap = parent ? parent.columnSpacing : 0
+                                var span = parent ? parent.width : 0
+                                return (span - gap * (cols - 1)) / cols
+                            }
                             height: cardContent.implicitHeight + Style.space(20)
 
                             readonly property color tint: root.tintFor(modelData.cli)
-                            readonly property string tKey: Model.targetKey(modelData.cli, modelData.model)
-                            readonly property bool expanded: !!root.resultExpand[tKey]
                             readonly property string bodyText: modelData.answer !== "" ? modelData.answer
                                 : (modelData.error !== "" ? modelData.error
                                     : (modelData.status === "pending" ? "Running…" : ""))
-                            readonly property int previewHeight: Style.space(140)
-                            readonly property bool hasMore: answerText.implicitHeight > previewHeight + 1
 
                             Rectangle {
                                 anchors.fill: parent
@@ -1912,7 +1908,7 @@ Panel {
                                         color: root.dim
                                         font.family: root.fontFamily
                                         font.pixelSize: Style.font.caption
-                                        elide: Text.ElideRight
+                                        wrapMode: Text.Wrap
                                     }
                                 }
 
@@ -1923,41 +1919,26 @@ Panel {
                                         ? Color.urgent : root.dim
                                     font.family: root.fontFamily
                                     font.pixelSize: Style.font.caption
-                                    elide: Text.ElideRight
+                                    wrapMode: Text.Wrap
                                 }
 
-                                Flickable {
-                                    id: answerViewport
+                                Text {
+                                    id: answerText
                                     width: parent.width
-                                    height: Math.min(answerText.implicitHeight,
-                                        resultCard.expanded ? Style.space(320) : resultCard.previewHeight)
-                                    contentWidth: width
-                                    contentHeight: answerText.implicitHeight
-                                    clip: true
-                                    interactive: resultCard.expanded && contentHeight > height
-                                    boundsBehavior: Flickable.StopAtBounds
-                                    flickableDirection: Flickable.VerticalFlick
-
-                                    ResultRowWheel { row: resultView }
-
-                                    Text {
-                                        id: answerText
-                                        width: answerViewport.width
-                                        text: resultCard.modelData.answer !== ""
-                                            ? Model.markdownForDisplay(resultCard.bodyText)
-                                            : resultCard.bodyText
-                                        textFormat: resultCard.modelData.answer !== ""
-                                            ? Text.MarkdownText : Text.PlainText
-                                        color: resultCard.modelData.answer !== "" ? root.ink
-                                            : (resultCard.modelData.error !== "" ? Color.urgent : root.dim)
-                                        linkColor: resultCard.tint
-                                        font.family: root.fontFamily
-                                        font.pixelSize: Style.font.bodySmall
-                                        wrapMode: Text.Wrap
-                                        onLinkActivated: function(link) {
-                                            var safe = Model.externalLinkForDisplay(link)
-                                            if (safe) Qt.openUrlExternally(safe)
-                                        }
+                                    text: resultCard.modelData.answer !== ""
+                                        ? Model.markdownForDisplay(resultCard.bodyText)
+                                        : resultCard.bodyText
+                                    textFormat: resultCard.modelData.answer !== ""
+                                        ? Text.MarkdownText : Text.PlainText
+                                    color: resultCard.modelData.answer !== "" ? root.ink
+                                        : (resultCard.modelData.error !== "" ? Color.urgent : root.dim)
+                                    linkColor: resultCard.tint
+                                    font.family: root.fontFamily
+                                    font.pixelSize: Style.font.bodySmall
+                                    wrapMode: Text.Wrap
+                                    onLinkActivated: function(link) {
+                                        var safe = Model.externalLinkForDisplay(link)
+                                        if (safe) Qt.openUrlExternally(safe)
                                     }
                                 }
 
@@ -1991,36 +1972,6 @@ Panel {
                                             onClicked: root.copyAnswer(resultCard.modelData.answer)
                                         }
                                     }
-
-                                    BorderSurface {
-                                        id: moreBtn
-                                        visible: resultCard.hasMore
-                                        width: visible
-                                            ? Math.max(Style.space(56), moreLabel.implicitWidth + Style.space(20))
-                                            : 0
-                                        height: root.lineHeight
-                                        radius: root.actionRadius
-                                        color: Style.controlFill(moreHover.containsMouse, false, root.ink, Color.accent)
-                                        borderSpec: Border.controlSpec("normal", root.ink, Color.accent)
-
-                                        Text {
-                                            id: moreLabel
-                                            anchors.centerIn: parent
-                                            textFormat: Text.PlainText
-                                            text: resultCard.expanded ? "Less" : "More"
-                                            color: root.ink
-                                            font.family: root.fontFamily
-                                            font.pixelSize: Style.font.bodySmall
-                                        }
-
-                                        MouseArea {
-                                            id: moreHover
-                                            anchors.fill: parent
-                                            hoverEnabled: true
-                                            cursorShape: Qt.PointingHandCursor
-                                            onClicked: root.toggleResultExpand(resultCard.tKey)
-                                        }
-                                    }
                                 }
 
                                 Text {
@@ -2036,19 +1987,19 @@ Panel {
                     }
                     }
 
-                    ScrollBar.horizontal: ScrollBar {
+                    ScrollBar.vertical: ScrollBar {
                         parent: resultArea
                         padding: 0
                         interactive: false
-                        height: Style.space(4)
-                        width: resultView.width
-                        x: resultView.x
-                        y: resultView.y + resultView.height + (panel.padding - height) / 2
-                        policy: resultArea.visible && resultView.columns.overflow
+                        width: Style.space(4)
+                        height: resultView.height
+                        x: resultView.x + resultView.width + (panel.padding - width) / 2
+                        y: resultView.y
+                        policy: resultArea.visible && resultView.contentHeight > resultView.height
                             ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
                         contentItem: Rectangle {
-                            implicitHeight: Style.space(4)
-                            radius: height / 2
+                            implicitWidth: Style.space(4)
+                            radius: width / 2
                             color: root.dim
                         }
                         background: Rectangle {
@@ -2059,6 +2010,7 @@ Panel {
                 }
 
                 Item {
+                    id: resultFooter
                     width: parent.width
                     height: visible ? Style.space(22) : 0
                     visible: !root.setupOpen && root.displayRun && root.displayRun.targets && root.displayRun.targets.length > 0
