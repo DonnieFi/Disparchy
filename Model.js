@@ -320,6 +320,27 @@ function escapeTarget(confirmOpen, menuOpen) {
     return "panel"
 }
 
+function panelWidth(providerCount, screenWidth, minWidth, colWidth, gap, insets) {
+    var count = parseInt(providerCount, 10)
+    if (!isFinite(count) || count < 1)
+        count = 1
+    var n = Math.min(count, 3)
+    var min = Number(minWidth)
+    var col = Number(colWidth)
+    var spacing = Number(gap)
+    var pad = Number(insets)
+    if (!isFinite(min)) min = 0
+    if (!isFinite(col)) col = 0
+    if (!isFinite(spacing)) spacing = 0
+    if (!isFinite(pad)) pad = 0
+    var needed = n * col + (n - 1) * spacing + pad
+    var width = Math.max(min, needed)
+    var screen = Number(screenWidth)
+    if (!isFinite(screen) || screen <= 0)
+        return width
+    return Math.min(screen, width)
+}
+
 function resultColumns(panelWidth, providerCount, minWidth, gap) {
     var count = parseInt(providerCount, 10)
     if (!isFinite(count) || count < 1)
