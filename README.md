@@ -136,7 +136,7 @@ Status words on a **Setup** row:
 
 Sign-in opens a held terminal, `xdg-terminal-exec`, with that CLI's login command. HTTP rows have no login launch.
 
-The header pill reads **IDLE**, **N ARMED**, **SETUP**, **N RUNNING**, or **N SAVED**.
+The header pill reads **Idle**, **N armed**, **N running**, **Setup**, or **N saved**.
 
 The footer reads `in N · out N · ≈ N this run · ≈ N saved`. Each column ends with `≈ N out`.
 
