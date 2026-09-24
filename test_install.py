@@ -97,7 +97,8 @@ def test_install() -> None:
     with tempfile.TemporaryDirectory(prefix="disparchy-install.") as raw:
         home, target, state = make_home(Path(raw))
         state_before = snapshot(state)
-        other_before = (home / ".config" / "omarchy" / "plugins" / "other.plugin" / "keep.txt").read_bytes()
+        other_file = home / ".config" / "omarchy" / "plugins" / "other.plugin" / "keep.txt"
+        other_before = other_file.read_bytes()
 
         linked = home / "linked-plugin"
         linked.mkdir()
@@ -138,7 +139,7 @@ def test_install() -> None:
         assert (target / "marker-old-install.txt").read_bytes() == b"old-install-bytes\n"
         assert snapshot(state) == state_before
         layout(home, {"other.plugin"})
-        assert other_before == b"stay\n"
+        assert other_file.read_bytes() == other_before
 
         # A missing target is one rename, with the same cleanup.
         os.rename(target, home / "held-aside")

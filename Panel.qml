@@ -22,7 +22,6 @@ Panel {
     property bool setupOpen: false
     property string pluginVersion: ""
     property string menuCli: ""
-    property int openPickers: 0
     property var selection: Model.emptySelection()
     property var auth: ({})
     property var available: []
@@ -62,12 +61,12 @@ Panel {
     readonly property color dim: Qt.darker(ink, 1.55)
     readonly property color rule: Util.alpha(ink, 0.16)
     readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
-    readonly property int hangWidth: {
-        var n = displayRun && displayRun.targets ? Math.max(1, displayRun.targets.length) : 1
-        if (setupOpen) return Style.space(680)
-        if (!displayRun) return Style.space(580)
-        return Math.max(Style.space(520), Math.min(Style.space(960), Style.space(210) * n))
-    }
+    // Padding plus the popup border, both sides, so the result area fits n columns.
+    readonly property real horizontalInsets: panel.padding * 2
+        + Border.left(panel.borderSpec) + Border.right(panel.borderSpec)
+    readonly property int hangWidth: Math.round(Model.panelWidth(
+        armedCount, panel.availableCardWidth,
+        Style.space(520), Style.space(280), Style.space(8), horizontalInsets))
     readonly property int lineHeight: Style.space(28)
     readonly property int actionRadius: Style.space(9)
 
@@ -162,8 +161,11 @@ Panel {
         return cli
     }
 
-    function notePicker(open) {
-        root.openPickers = Math.max(0, root.openPickers + (open ? 1 : -1))
+    function escape() {
+        var target = Model.escapeTarget(root.clearConfirmOpen, root.menuCli !== "")
+        if (target === "confirm") clearConfirm.canceled()
+        else if (target === "menu") root.menuCli = ""
+        else root.close()
     }
 
     function discover() {
@@ -776,13 +778,8 @@ Panel {
         PanelKeyCatcher {
             id: keyCatcher
             anchors.fill: parent
-            blocked: promptEdit.activeFocus || root.openPickers > 0
-            onCloseRequested: {
-                var target = Model.escapeTarget(root.clearConfirmOpen, root.menuCli !== "")
-                if (target === "confirm") clearConfirm.canceled()
-                else if (target === "menu") root.menuCli = ""
-                else root.close()
-            }
+            blocked: promptEdit.activeFocus
+            onCloseRequested: root.escape()
             onTabRequested: function (direction) {
                 if (root.clearConfirmOpen)
                     clearConfirm.selectedIndex = clearConfirm.selectedIndex === 0 ? 1 : 0
@@ -1001,10 +998,7 @@ Panel {
                             selectedTextColor: root.ink
                             Keys.onPressed: function (event) {
                                 if (event.key === Qt.Key_Escape) {
-                                    var target = Model.escapeTarget(root.clearConfirmOpen, root.menuCli !== "")
-                                    if (target === "confirm") clearConfirm.canceled()
-                                    else if (target === "menu") root.menuCli = ""
-                                    else root.close()
+                                    root.escape()
                                     event.accepted = true
                                 } else if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
                                         && !(event.modifiers & Qt.ShiftModifier)) {
@@ -1821,7 +1815,8 @@ Panel {
                         return Math.max(0, inner - chrome)
                     }
 
-                    readonly property int columns: Model.resultColumns(width, paper.count)
+                    readonly property int columns: Model.resultColumns(
+                        width, paper.count, Style.space(280), Style.space(8))
 
                     Grid {
                         id: resultGrid

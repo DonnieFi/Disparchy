@@ -75,6 +75,8 @@ omarchy-shell shell rescanPlugins
 omarchy plugin enable dkfiander.disparchy
 ```
 
+After installing or updating, run `omarchy-restart-shell`.
+
 Validate:
 
 ```bash
