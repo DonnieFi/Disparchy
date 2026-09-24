@@ -158,12 +158,12 @@ Bar-widget settings, also stored in `shell.json` under the widget entry:
 
 Which providers are on the bar, which models you picked, and whether auto-paste is on, live in `selection.json`. That file is not in the widget schema.
 
-Runtime state lives under `$XDG_STATE_HOME/omarchy/dkfiander.disparchy/`. When that variable is unset, the directory is `~/.local/state/omarchy/dkfiander.disparchy/`. The directory is mode `0700`. Files are mode `0600`. Nothing here is written into the plugin tree, because the shell watches that tree and reloads on every write.
+Runtime state lives under `$XDG_STATE_HOME/omarchy/dkfiander.disparchy/`. When that variable is unset, the directory is `~/.local/state/omarchy/dkfiander.disparchy/`. The panel sets that directory to mode `0700` and the files in it to mode `0600`. The first save of a new file is usually mode `0644` until that step, and a rewrite keeps the mode the file already has. Nothing here is written into the plugin tree, because the shell watches that tree and reloads on every write.
 
 | File | Purpose |
 |------|---------|
 | `selection.json` | Armed models, enabled providers, HTTP URLs, `autoPaste` |
-| `auth.json` | API keys for OpenClaw and Hermes. Mode `0600`. Never written into the plugin tree |
+| `auth.json` | API keys for OpenClaw and Hermes. Never written into the plugin tree. The runner refuses a symlink or a file readable by group or others |
 | `history.json` | Past runs |
 | `prompt.txt` | The prompt file each send reads |
 | `status.json` | Last provider probe. Rewritten by the panel |
