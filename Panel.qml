@@ -518,7 +518,15 @@ Panel {
 
     function copyAnswer(text) {
         if (!text) return
-        Quickshell.execDetached(["wl-copy", "--", text])
+        copyProc.pending = String(text)
+        if (!copyProc.running) startCopy()
+    }
+
+    function startCopy() {
+        copyProc.text = copyProc.pending
+        copyProc.pending = ""
+        copyProc.stdinEnabled = true
+        copyProc.running = true
     }
 
     function formatWhen(iso) {
@@ -682,6 +690,21 @@ Panel {
             waitForEnd: true
             onStreamFinished: root.applyStatus(text)
         }
+    }
+
+    // wl-copy stays running as the clipboard owner, so the text goes on
+    // stdin: an argument would stay in the process list until the next copy.
+    Process {
+        id: copyProc
+        property string text: ""
+        property string pending: ""
+        command: ["wl-copy"]
+        onStarted: {
+            write(text)
+            text = ""
+            stdinEnabled = false
+        }
+        onExited: if (pending) root.startCopy()
     }
 
     Process {
