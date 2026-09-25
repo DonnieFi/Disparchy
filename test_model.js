@@ -134,32 +134,60 @@ const pillCases = [
         name: "CLIs only",
         selection: { models: { claude: ["sonnet"], codex: [""] } },
         available: [{ id: "claude" }, { id: "codex" }],
+        columns: [["claude", "sonnet"], ["codex", ""]],
         expect: 2
     },
     {
         name: "one Ollama model",
         selection: { models: { ollama: ["llama3.2"] } },
         available: [{ id: "ollama" }],
+        columns: [["ollama", "llama3.2"]],
         expect: 1
     },
     {
         name: "two Ollama models + LM Studio",
         selection: { models: { ollama: ["llama3.2", "qwen2.5"], lmstudio: ["local"] } },
         available: [{ id: "ollama" }, { id: "lmstudio" }],
+        columns: [["ollama", "llama3.2"], ["ollama", "qwen2.5"], ["lmstudio", "local"]],
         expect: 3
     },
     {
         name: "nothing armed",
         selection: { models: {} },
         available: [{ id: "claude" }, { id: "ollama" }, { id: "lmstudio" }],
+        columns: [],
         expect: 0
+    },
+    {
+        name: "hidden provider and an extra model",
+        selection: {
+            models: {
+                claude: ["sonnet"],
+                cursor: ["auto"],
+                ollama: ["llama3.2", "qwen2.5"]
+            }
+        },
+        available: [{ id: "claude" }, { id: "ollama" }],
+        columns: [["claude", "sonnet"], ["ollama", "llama3.2"], ["ollama", "qwen2.5"]],
+        expect: 3,
+        hiddenExtra: true
     }
 ]
 for (var c = 0; c < pillCases.length; c++) {
     var sample = pillCases[c]
-    var columns = M.expandJobs(sample.selection, sample.available).length
-    eq(M.answerCount(sample.selection, sample.available), sample.expect, sample.name)
-    eq(M.answerCount(sample.selection, sample.available), columns, "pill count equals column count: " + sample.name)
+    var expected = sample.columns.length
+    is(expected === sample.expect, "column list is the expected count: " + sample.name)
+    eq(M.answerCount(sample.selection, sample.available), expected, "pill count equals column count: " + sample.name)
+    if (sample.hiddenExtra) {
+        var naiveModels = 0
+        var selected = sample.selection.models
+        for (var id in selected) {
+            if (Object.prototype.hasOwnProperty.call(selected, id))
+                naiveModels += selected[id].length
+        }
+        is(naiveModels !== expected, "naive model count includes a hidden column: " + sample.name)
+        is(sample.available.length !== expected, "naive provider count drops an extra column: " + sample.name)
+    }
 }
 
 const run = {
