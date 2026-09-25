@@ -25,7 +25,6 @@ Panel {
     // Assigned only when the panel opens, a run is sent, or a past run is opened.
     property int widthCount: 1
     property var selection: Model.emptySelection()
-    property var auth: ({})
     property var available: []
     property var providerStatus: []
     property var liveModels: ({})
@@ -47,6 +46,10 @@ Panel {
     property var liveRun: null
     property bool historyPrimed: false
     property bool clearConfirmOpen: false
+    property string confirmAction: "history"
+    property string confirmCli: ""
+    property string replacingCli: ""
+    property string keyErrorCli: ""
     property bool cancelRequested: false
 
     readonly property string home: Quickshell.env("HOME") || ""
@@ -55,7 +58,6 @@ Panel {
     readonly property string runnerPath: pluginDir + "/bin/disparchy-run"
     readonly property string historyPath: stateRoot + "/history.json"
     readonly property string selectionPath: stateRoot + "/selection.json"
-    readonly property string authPath: stateRoot + "/auth.json"
     readonly property string statusPath: stateRoot + "/status.json"
     readonly property string promptPath: stateRoot + "/prompt.txt"
 
@@ -227,19 +229,23 @@ Panel {
     }
 
     function applyStatus(raw) {
-        var rows = []
-        var lines = String(raw || "").split(/\r?\n/)
-        for (var i = 0; i < lines.length; i++) {
-            var line = String(lines[i] || "").trim()
-            if (!line) continue
-            var parts = line.split("\t")
-            rows.push({
-                cli: parts[0] || "",
-                installed: parts[1] || "missing",
-                auth: parts[2] || ""
-            })
-        }
-        root.providerStatus = rows
+        root.providerStatus = Model.parseProviderStatus(raw)
+    }
+
+    function beginKeyWrite(cli, field) {
+        if (keyProc.running) return
+        keyProc.keyField = field || null
+        keyProc.keyCli = String(cli || "")
+        keyProc.stdinEnabled = true
+        keyProc.command = ["python3", root.runnerPath, "--set-key", keyProc.keyCli]
+        keyProc.running = true
+    }
+
+    function askRemoveKey(cli) {
+        root.confirmAction = "remove-key"
+        root.confirmCli = String(cli || "")
+        clearConfirm.selectedIndex = 1
+        root.clearConfirmOpen = true
     }
 
     function applyHistory(raw) {
@@ -266,10 +272,6 @@ Panel {
         root.selection = Model.parseSelection(raw)
     }
 
-    function applyAuth(raw) {
-        root.auth = Model.parseAuth(raw)
-    }
-
     function saveHistory() {
         historyFile.setText(Model.serializeHistory(root.history))
         root.tightenPerms()
@@ -278,16 +280,6 @@ Panel {
     function saveSelection() {
         selectionFile.setText(Model.serializeSelection(root.selection))
         root.tightenPerms()
-    }
-
-    function saveAuth() {
-        authFile.setText(Model.serializeAuth(root.auth))
-        root.tightenPerms()
-    }
-
-    function setSecret(cli, key) {
-        root.auth = Model.setSecret(root.auth, cli, key)
-        root.saveAuth()
     }
 
     function saveStatus() {
@@ -299,8 +291,9 @@ Panel {
         if (permProc.running) return
         permProc.command = ["python3", "-c",
             "import os,sys\nroot=sys.argv[1]\nos.makedirs(root, exist_ok=True)\nos.chmod(root, 0o700)\n" +
-            "for name in os.listdir(root):\n p=os.path.join(root, name)\n" +
-            " if os.path.isfile(p): os.chmod(p, 0o600)\n",
+            "for name in ('selection.json','history.json','status.json','prompt.txt'):\n" +
+            " p=os.path.join(root, name)\n" +
+            " if os.path.isfile(p) and not os.path.islink(p): os.chmod(p, 0o600)\n",
             root.stateRoot]
         permProc.running = true
     }
@@ -395,7 +388,7 @@ Panel {
     function statusFor(cli) {
         for (var i = 0; i < providerStatus.length; i++)
             if (providerStatus[i].cli === cli) return providerStatus[i]
-        return { cli: cli, installed: "missing", auth: "" }
+        return { cli: cli, installed: "missing", auth: "", key: "none" }
     }
 
     function slotList() {
@@ -576,11 +569,17 @@ Panel {
     }
 
     onInFlightChanged: saveStatus()
-    onOpenedChanged: if (opened) {
-        root.discover()
-        root.refreshModels()
-        root.pullClipboard()
-        Qt.callLater(function () { promptEdit.forceActiveFocus() })
+    onOpenedChanged: {
+        if (opened) {
+            root.discover()
+            root.refreshModels()
+            root.pullClipboard()
+            Qt.callLater(function () { promptEdit.forceActiveFocus() })
+            return
+        }
+        root.replacingCli = ""
+        root.keyErrorCli = ""
+        root.confirmAction = "history"
     }
 
     Component.onCompleted: {
@@ -626,17 +625,6 @@ Panel {
         printErrors: false
         onLoaded: root.applySelection(text())
         onLoadFailed: root.applySelection("{}")
-        onFileChanged: reload()
-    }
-
-    FileView {
-        id: authFile
-        path: root.authPath
-        watchChanges: true
-        atomicWrites: true
-        printErrors: false
-        onLoaded: root.applyAuth(text())
-        onLoadFailed: root.applyAuth("{}")
         onFileChanged: reload()
     }
 
@@ -700,6 +688,45 @@ Panel {
         }
     }
 
+    Process {
+        id: keyProc
+        property string keyCli: ""
+        property var keyField: null
+        stdout: StdioCollector {
+            id: keyOut
+            waitForEnd: true
+        }
+        stderr: StdioCollector {
+            id: keyErr
+            waitForEnd: true
+        }
+        // Quickshell closes the write channel only when stdinEnabled goes false
+        // while the process is running (Process::setStdinEnabled -> closeWriteChannel).
+        // The runner reads stdin to EOF, so Save and Remove both have to close it.
+        onStarted: {
+            var field = keyField
+            if (field)
+                write(field.text)
+            stdinEnabled = false
+        }
+        onExited: function (code) {
+            var cli = keyCli
+            var field = keyField
+            keyField = null
+            if (code !== 0) {
+                root.keyErrorCli = cli
+                return
+            }
+            if (field)
+                field.text = ""
+            if (root.keyErrorCli === cli)
+                root.keyErrorCli = ""
+            if (root.replacingCli === cli)
+                root.replacingCli = ""
+            root.refreshStatus()
+        }
+    }
+
     component Slot: Process {
         property string cliName: ""
         property string modelName: ""
@@ -723,8 +750,6 @@ Panel {
                 "--prompt-file", root.promptPath]
             var endpoint = Model.endpointFor(root.selection, job.cli)
             if (endpoint) cmd.push("--endpoint", endpoint)
-            if (Model.secretFor(root.auth, job.cli))
-                cmd.push("--auth-file", root.authPath)
             command = cmd
             running = true
         }
@@ -1478,44 +1503,136 @@ Panel {
                                             }
                                         }
 
-                                        Item {
+                                        Column {
+                                            id: keyBlock
                                             visible: Model.needsSecret(setupRow.cliId)
                                             width: parent.width
-                                            height: visible ? Style.space(24) : 0
+                                            spacing: Style.space(4)
 
-                                            TextInput {
-                                                id: secretEdit
-                                                z: 1
-                                                anchors.fill: parent
-                                                leftPadding: Style.space(8)
-                                                verticalAlignment: TextInput.AlignVCenter
-                                                echoMode: TextInput.Password
-                                                text: Model.secretFor(root.auth, setupRow.cliId)
-                                                color: root.ink
-                                                font.family: root.fontFamily
-                                                font.pixelSize: Style.font.caption
-                                                selectByMouse: true
-                                                clip: true
-                                                onEditingFinished: root.setSecret(setupRow.cliId, text)
+                                            readonly property bool saved: setupRow.status.key === "saved"
+                                            readonly property bool editing: !saved || root.replacingCli === setupRow.cliId
+
+                                            property bool panelWasOpen: root.opened
+                                            onPanelWasOpenChanged: if (!panelWasOpen) secretEdit.text = ""
+
+                                            Row {
+                                                visible: keyBlock.saved && !keyBlock.editing
+                                                width: parent.width
+                                                spacing: Style.space(12)
+
+                                                Text {
+                                                    text: "Key saved"
+                                                    color: root.ink
+                                                    font.family: root.fontFamily
+                                                    font.pixelSize: Style.font.caption
+                                                }
+                                                Text {
+                                                    text: "Replace"
+                                                    color: replaceHit.containsMouse ? root.ink : root.dim
+                                                    font.family: root.fontFamily
+                                                    font.pixelSize: Style.font.caption
+                                                    MouseArea {
+                                                        id: replaceHit
+                                                        anchors.fill: parent
+                                                        anchors.margins: -4
+                                                        hoverEnabled: true
+                                                        cursorShape: Qt.PointingHandCursor
+                                                        onClicked: {
+                                                            secretEdit.text = ""
+                                                            root.replacingCli = setupRow.cliId
+                                                            if (root.keyErrorCli === setupRow.cliId)
+                                                                root.keyErrorCli = ""
+                                                        }
+                                                    }
+                                                }
+                                                Text {
+                                                    text: "Remove"
+                                                    color: removeHit.containsMouse ? root.ink : root.dim
+                                                    font.family: root.fontFamily
+                                                    font.pixelSize: Style.font.caption
+                                                    MouseArea {
+                                                        id: removeHit
+                                                        anchors.fill: parent
+                                                        anchors.margins: -4
+                                                        hoverEnabled: true
+                                                        cursorShape: Qt.PointingHandCursor
+                                                        onClicked: root.askRemoveKey(setupRow.cliId)
+                                                    }
+                                                }
+                                            }
+
+                                            Row {
+                                                id: keyEditRow
+                                                visible: keyBlock.editing
+                                                width: parent.width
+                                                spacing: Style.space(6)
+
+                                                TextField {
+                                                    id: secretEdit
+                                                    width: Math.max(Style.space(80), parent.width - keySave.width - (keyCancel.visible ? keyCancel.width + parent.spacing : 0) - parent.spacing)
+                                                    height: Style.space(28)
+                                                    echoMode: TextInput.Password
+                                                    placeholderText: "Paste API key"
+                                                    placeholderTextColor: root.dim
+                                                    color: root.ink
+                                                    font.family: root.fontFamily
+                                                    font.pixelSize: Style.font.caption
+                                                    leftPadding: Style.space(8)
+                                                    selectByMouse: true
+                                                    background: Rectangle {
+                                                        radius: Math.max(2, Style.cornerRadius / 2)
+                                                        color: "transparent"
+                                                        border.color: Qt.alpha(setupRow.tint, 0.7)
+                                                        border.width: 1
+                                                    }
+                                                }
+                                                Text {
+                                                    id: keySave
+                                                    text: "Save"
+                                                    color: saveHit.containsMouse ? root.ink : root.dim
+                                                    font.family: root.fontFamily
+                                                    font.pixelSize: Style.font.caption
+                                                    MouseArea {
+                                                        id: saveHit
+                                                        anchors.fill: parent
+                                                        anchors.margins: -4
+                                                        hoverEnabled: true
+                                                        cursorShape: Qt.PointingHandCursor
+                                                        onClicked: root.beginKeyWrite(setupRow.cliId, secretEdit)
+                                                    }
+                                                }
+                                                Text {
+                                                    id: keyCancel
+                                                    visible: root.replacingCli === setupRow.cliId
+                                                    text: "Cancel"
+                                                    color: cancelHit.containsMouse ? root.ink : root.dim
+                                                    font.family: root.fontFamily
+                                                    font.pixelSize: Style.font.caption
+                                                    MouseArea {
+                                                        id: cancelHit
+                                                        anchors.fill: parent
+                                                        anchors.margins: -4
+                                                        hoverEnabled: true
+                                                        cursorShape: Qt.PointingHandCursor
+                                                        onClicked: {
+                                                            secretEdit.text = ""
+                                                            if (root.replacingCli === setupRow.cliId)
+                                                                root.replacingCli = ""
+                                                            if (root.keyErrorCli === setupRow.cliId)
+                                                                root.keyErrorCli = ""
+                                                        }
+                                                    }
+                                                }
                                             }
 
                                             Text {
-                                                x: Style.space(8)
-                                                anchors.verticalCenter: parent.verticalCenter
-                                                visible: secretEdit.text.length === 0
-                                                text: "API key"
-                                                color: root.dim
+                                                visible: root.keyErrorCli === setupRow.cliId
+                                                width: parent.width
+                                                text: "Couldn't save key"
+                                                color: root.ink
                                                 font.family: root.fontFamily
                                                 font.pixelSize: Style.font.caption
-                                            }
-
-                                            Rectangle {
-                                                anchors.fill: parent
-                                                z: -1
-                                                radius: Math.max(2, Style.cornerRadius / 2)
-                                                color: "transparent"
-                                                border.color: Qt.alpha(setupRow.tint, 0.7)
-                                                border.width: 1
+                                                wrapMode: Text.WordWrap
                                             }
                                         }
                                     }
@@ -1665,6 +1782,7 @@ Panel {
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: {
+                                        root.confirmAction = "history"
                                         clearConfirm.selectedIndex = 1
                                         root.clearConfirmOpen = true
                                     }
@@ -2052,19 +2170,30 @@ Panel {
                 anchors.fill: parent
                 opened: root.clearConfirmOpen
                 z: 30
-                message: "Clear Disparchy history?"
-                confirmText: "Clear"
+                message: root.confirmAction === "remove-key"
+                    ? ("Remove the saved key for " + root.cliLabel(root.confirmCli) + "?")
+                    : "Clear Disparchy history?"
+                confirmText: root.confirmAction === "remove-key" ? "Remove" : "Clear"
                 background: Color.popups.background
                 foreground: root.ink
                 selectedText: Color.accent
                 fontFamily: root.fontFamily
                 cornerRadius: Style.cornerRadius
-                onCanceled: root.clearConfirmOpen = false
+                onCanceled: {
+                    root.clearConfirmOpen = false
+                    root.confirmAction = "history"
+                }
                 onConfirmed: {
+                    root.clearConfirmOpen = false
+                    if (root.confirmAction === "remove-key") {
+                        var cli = root.confirmCli
+                        root.confirmAction = "history"
+                        root.beginKeyWrite(cli, null)
+                        return
+                    }
                     root.history = []
                     if (liveRun && Model.inFlightCount(liveRun) === 0) root.liveRun = null
                     root.viewingRunId = ""
-                    root.clearConfirmOpen = false
                     root.saveHistory()
                     root.rebuildHistory()
                 }
