@@ -641,56 +641,77 @@ def argv_for(
     cli: str,
     binary: str,
     model: str,
-    prompt: str,
-    prompt_file: str | None = None,
+    prompt_file: str,
     via_gateway: bool = False,
 ) -> list[str]:
+    """Never takes the prompt text: argv is visible to every local user."""
     m = (model or "").strip()
     if cli == "claude":
         cmd = [binary, "-p", "--output-format", "text"]
         if m:
             cmd += ["--model", m]
-        cmd += ["--", prompt]
         return cmd
     if cli == "codex":
         cmd = [binary, "exec", "--skip-git-repo-check"]
         if m:
             cmd += ["--model", m]
-        cmd += ["--", prompt]
+        cmd += ["-"]
         return cmd
     if cli == "grok":
-        cmd = [binary, "--no-auto-update", "-p", prompt]
+        cmd = [binary, "--no-auto-update", "--prompt-file", prompt_file]
         if m:
             cmd += ["--model", m]
         cmd += ["--output-format", "plain"]
         return cmd
     if cli == "antigravity":
-        cmd = [binary, "--output-format", "text"]
+        cmd = [binary, "--input-format", "stream-json", "--output-format", "stream-json"]
         if m:
             cmd += ["--model", m]
-        cmd += ["--print", prompt]
         return cmd
     if cli == "cursor":
         cmd = [binary, "-p", "--output-format", "text"]
         if m:
             cmd += ["--model", m]
-        cmd += ["--", prompt]
         return cmd
     if cli == "openclaw":
-        src = prompt_file or prompt
         if via_gateway:
-            cmd = [binary, "agent", "--message-file", src]
+            cmd = [binary, "agent", "--message-file", prompt_file]
         else:
-            cmd = [binary, "agent", "exec", "--message-file", src]
+            cmd = [binary, "agent", "exec", "--message-file", prompt_file]
         if m:
             cmd += ["--model", m]
         return cmd
     if cli == "hermes":
-        cmd = [binary, "chat", "--oneshot", "--query-file", prompt_file or prompt]
+        cmd = [binary, "chat", "--oneshot", "--query-file", prompt_file]
         if m:
             cmd += ["-m", m]
         return cmd
     raise SystemExit(f"unknown cli: {cli}")
+
+
+def stdin_for(cli: str, prompt: str) -> str | None:
+    if cli in ("claude", "codex", "cursor"):
+        return prompt
+    if cli == "antigravity":
+        message = {"event": "user", "message": {"role": "user", "content": prompt}}
+        return json.dumps(message) + "\n"
+    return None
+
+
+def parse_agy_stream(raw: str) -> tuple[str, str]:
+    """Return (answer, error) from agy's stream-json output."""
+    for line in reversed(raw.splitlines()):
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(event, dict) or event.get("event") != "result":
+            continue
+        result = event.get("result") or {}
+        if result.get("status") == "SUCCESS":
+            return str(result.get("response") or ""), ""
+        return "", str(result.get("error") or "antigravity failed")
+    return "", "antigravity produced no result"
 
 
 def main() -> int:
@@ -776,7 +797,9 @@ def main() -> int:
         return 2
 
     via_gateway = args.cli == "openclaw" and gateway_up()
-    cmd = argv_for(args.cli, binary, args.model, prompt, args.prompt_file, via_gateway)
+    cmd = argv_for(args.cli, binary, args.model, args.prompt_file, via_gateway)
+    feed = stdin_for(args.cli, prompt)
+    stdin_args = {"input": feed} if feed is not None else {"stdin": subprocess.DEVNULL}
     env = os.environ.copy()
     env["TERM"] = "dumb"
     started = time.monotonic()
@@ -785,10 +808,10 @@ def main() -> int:
             cmd,
             capture_output=True,
             text=True,
-            stdin=subprocess.DEVNULL,
             timeout=args.timeout,
             cwd=os.path.expanduser("~"),
             env=env,
+            **stdin_args,
         )
     except subprocess.TimeoutExpired:
         print("timeout", file=sys.stderr)
@@ -796,6 +819,13 @@ def main() -> int:
 
     out = proc.stdout or ""
     err = proc.stderr or ""
+    if args.cli == "antigravity":
+        out, failure = parse_agy_stream(out)
+        if failure:
+            err = failure + ("\n" + err if err else "")
+            if proc.returncode == 0:
+                sys.stderr.write(err[: 16 * 1024])
+                return 1
     if len(out) > 256 * 1024:
         out = out[: 256 * 1024] + "\n[truncated]"
     sys.stdout.write(out)

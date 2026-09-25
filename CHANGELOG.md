@@ -3,6 +3,10 @@
 All notable changes to Disparchy (`dkfiander.disparchy`) are documented here.
 The version in `manifest.json` is the single source of truth.
 
+## 0.6.2, 2026-09-25
+
+- The prompt is no longer passed as a command-line argument, where other local users could read it in the process list. Claude, Codex, and Cursor read it from stdin, Grok uses `--prompt-file`, and Antigravity reads it from stdin in stream-json mode
+
 ## 0.6.1, 2026-09-24
 
 - Capped HTTP provider responses at 8 MiB (1 MiB for model lists) while reading. A larger, truncated, or non-JSON body fails that column instead of exhausting memory or crashing the runner

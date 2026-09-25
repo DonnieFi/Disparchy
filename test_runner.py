@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.machinery
 import importlib.util
+import inspect
 import io
 import json
 import os
@@ -39,18 +40,84 @@ def load():
 def test_argv_is_frozen():
     mod = load()
     for cli in mod.CLI_ALLOWED:
-        cmd = mod.argv_for(cli, cli, "m", "hello")
+        cmd = mod.argv_for(cli, cli, "m", "/tmp/prompt.txt")
         joined = " ".join(cmd)
         for flag in FORBIDDEN:
             assert flag not in cmd, (cli, cmd)
             assert flag not in joined, (cli, joined)
-        assert "hello" in cmd
         assert cmd[0] == cli
+
+
+def test_argv_never_takes_prompt_text():
+    mod = load()
+    assert "prompt" not in inspect.signature(mod.argv_for).parameters
+    for cli in mod.CLI_ALLOWED:
+        cmd = mod.argv_for(cli, cli, "", "/tmp/prompt.txt")
+        feed = mod.stdin_for(cli, "hello")
+        assert feed is not None or "/tmp/prompt.txt" in cmd, cli
+
+
+def test_agy_stream_parse():
+    mod = load()
+    ok = '{"event":"init"}\n{"event":"result","result":{"status":"SUCCESS","response":"PONG\\n"}}\n'
+    assert mod.parse_agy_stream(ok) == ("PONG\n", "")
+    bad = '{"event":"result","result":{"status":"ERROR","response":"","error":"bad model"}}'
+    assert mod.parse_agy_stream(bad) == ("", "bad model")
+    assert mod.parse_agy_stream("not json\n") == ("", "antigravity produced no result")
+
+
+FAKE_CLI = r'''#!{python}
+import json, os, sys
+argv = sys.argv[1:]
+data = "" if sys.stdin is None or sys.stdin.closed else sys.stdin.read()
+if "--prompt-file" in argv:
+    data = open(argv[argv.index("--prompt-file") + 1], encoding="utf-8").read()
+with open(os.environ["FAKE_LOG"], "a", encoding="utf-8") as log:
+    log.write(json.dumps({{"argv": sys.argv, "got": data}}) + "\n")
+if os.path.basename(sys.argv[0]) == "agy":
+    content = json.loads(data)["message"]["content"]
+    print(json.dumps({{"event": "result", "result": {{"status": "SUCCESS", "response": content}}}}))
+else:
+    sys.stdout.write(data)
+'''
+
+
+def test_prompt_never_reaches_argv():
+    secret = "private-prompt-7f3a"
+    with tempfile.TemporaryDirectory() as tmp:
+        folder = Path(tmp)
+        bindir = folder / "bin"
+        bindir.mkdir()
+        for name in ("claude", "codex", "grok", "agy", "cursor-agent"):
+            path = bindir / name
+            path.write_text(FAKE_CLI.format(python=sys.executable), encoding="utf-8")
+            path.chmod(0o755)
+        prompt_file = folder / "prompt.txt"
+        prompt_file.write_text(f"Say {secret} back.", encoding="utf-8")
+        log = folder / "log.jsonl"
+        env = _isolated_env(folder)
+        env["PATH"] = str(bindir)
+        env["FAKE_LOG"] = str(log)
+        for cli in ("claude", "codex", "grok", "antigravity", "cursor"):
+            proc = subprocess.run(
+                [sys.executable, str(RUNNER), "--cli", cli, "--model", "m", "--prompt-file", str(prompt_file)],
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=30,
+            )
+            assert proc.returncode == 0, (cli, proc.stderr)
+            assert secret in proc.stdout, (cli, proc.stdout)
+        rows = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
+        assert len(rows) == 5
+        for row in rows:
+            assert not any(secret in arg for arg in row["argv"]), row["argv"]
+            assert secret in row["got"], row
 
 
 def test_cursor_model_uses_long_flag():
     mod = load()
-    cmd = mod.argv_for("cursor", "cursor-agent", "auto", "q")
+    cmd = mod.argv_for("cursor", "cursor-agent", "auto", "/tmp/prompt.txt")
     assert "--model" in cmd
     assert "auto" in cmd
     assert "-m" not in cmd
@@ -74,38 +141,44 @@ def test_live_model_parsers():
 
 def test_openclaw_uses_gateway_when_asked():
     mod = load()
-    cmd = mod.argv_for("openclaw", "openclaw", "sonnet", "ignored", "/tmp/prompt.txt", True)
+    cmd = mod.argv_for("openclaw", "openclaw", "sonnet", "/tmp/prompt.txt", True)
     assert cmd == ["openclaw", "agent", "--message-file", "/tmp/prompt.txt", "--model", "sonnet"]
     assert "exec" not in cmd
 
 
 def test_codex_exec_argv():
     mod = load()
-    assert mod.argv_for("codex", "codex", "", "hi") == [
-        "codex", "exec", "--skip-git-repo-check", "--", "hi"
+    assert mod.argv_for("codex", "codex", "", "/tmp/prompt.txt") == [
+        "codex", "exec", "--skip-git-repo-check", "-"
     ]
-    assert mod.argv_for("codex", "codex", "gpt-6-sol", "hi") == [
-        "codex", "exec", "--skip-git-repo-check", "--model", "gpt-6-sol", "--", "hi"
+    assert mod.argv_for("codex", "codex", "gpt-6-sol", "/tmp/prompt.txt") == [
+        "codex", "exec", "--skip-git-repo-check", "--model", "gpt-6-sol", "-"
     ]
+    assert mod.stdin_for("codex", "hi") == "hi"
 
 
 def test_file_prompt_argv():
     mod = load()
-    claw = mod.argv_for("openclaw", "openclaw", "sonnet", "ignored", "/tmp/prompt.txt")
+    claw = mod.argv_for("openclaw", "openclaw", "sonnet", "/tmp/prompt.txt")
     assert claw == ["openclaw", "agent", "exec", "--message-file", "/tmp/prompt.txt", "--model", "sonnet"]
-    hermes = mod.argv_for("hermes", "hermes", "", "ignored", "/tmp/prompt.txt")
+    hermes = mod.argv_for("hermes", "hermes", "", "/tmp/prompt.txt")
     assert hermes == ["hermes", "chat", "--oneshot", "--query-file", "/tmp/prompt.txt"]
     assert "-m" not in hermes
+    grok = mod.argv_for("grok", "grok", "", "/tmp/prompt.txt")
+    assert grok == ["grok", "--no-auto-update", "--prompt-file", "/tmp/prompt.txt", "--output-format", "plain"]
+    assert mod.stdin_for("grok", "hi") is None
 
 
 def test_empty_model_omits_flag():
     mod = load()
-    cmd = mod.argv_for("claude", "claude", "", "q")
+    cmd = mod.argv_for("claude", "claude", "", "/tmp/prompt.txt")
     assert "--model" not in cmd
-    cmd = mod.argv_for("antigravity", "agy", "", "q")
+    cmd = mod.argv_for("antigravity", "agy", "", "/tmp/prompt.txt")
     assert "--model" not in cmd
-    assert cmd.index("--output-format") < cmd.index("--print")
-    assert "q" in cmd
+    assert cmd == ["agy", "--input-format", "stream-json", "--output-format", "stream-json"]
+    assert json.loads(mod.stdin_for("antigravity", "q")) == {
+        "event": "user", "message": {"role": "user", "content": "q"}
+    }
 
 
 def test_chat_request_sends_bearer():
@@ -861,6 +934,9 @@ def test_missing_args_fail():
 
 if __name__ == "__main__":
     test_argv_is_frozen()
+    test_argv_never_takes_prompt_text()
+    test_agy_stream_parse()
+    test_prompt_never_reaches_argv()
     test_cursor_model_uses_long_flag()
     test_live_model_parsers()
     test_openclaw_uses_gateway_when_asked()
