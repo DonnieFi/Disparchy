@@ -8,7 +8,10 @@ environment. The state directory is created at mode 0700. auth.json is
 replaced by a temp file in that same directory, opened O_CREAT|O_EXCL
 at mode 0600, fsynced, then renamed into place. A symlink or a
 non-regular state directory or auth.json is refused and nothing is
-written. A loose auth.json (group or other bits) is refused. --status
+written. --set-key accepts an existing regular auth.json owned by the
+current user even when the mode is loose, and the rewrite lands at
+mode 0600. A file owned by another user is refused. Reading a key
+still refuses a loose auth.json. --status
 prints key:saved or key:none and never any part of a key.
 No shell interpolation."""
 from __future__ import annotations
@@ -18,6 +21,7 @@ import json
 import os
 import shutil
 import socket
+import stat
 import subprocess
 import sys
 import time
@@ -301,11 +305,23 @@ def set_key(cli: str, raw: str) -> None:
         raise SystemExit("unknown cli")
     directory = ensure_state_dir()
     target = directory / "auth.json"
-    if target.is_symlink():
-        raise SystemExit("auth file refused")
-    if target.exists() and not target.is_file():
-        raise SystemExit("auth file refused")
-    payload = load_auth(target) if target.exists() else {}
+    payload: dict = {}
+    # lstat, so a symlink is not followed. A loose mode is accepted here
+    # only, and only for a regular file owned by this user. The rewrite
+    # below replaces it at mode 0600. load_auth / read_bearer stay strict.
+    if target.is_symlink() or target.exists():
+        info = os.lstat(target)
+        if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
+            raise SystemExit("auth file refused")
+        if info.st_uid != os.getuid():
+            raise SystemExit("auth file refused")
+        try:
+            parsed = json.loads(target.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise SystemExit("auth file unreadable") from exc
+        if not isinstance(parsed, dict):
+            raise SystemExit("auth file unreadable")
+        payload = parsed
     text = normalize_key(raw)
     if text == "":
         payload.pop(cli, None)
