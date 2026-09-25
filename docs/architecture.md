@@ -98,6 +98,7 @@ Grok's signed-in check is the size of `~/.grok/auth.json`. The file contents are
 |-------|-------|
 | Prompt | 32 KiB. Larger prompts never start |
 | Stdout | 256 KiB, then `[truncated]` |
+| HTTP response | 8 MiB for an answer, 1 MiB for a model list. A larger, truncated, or non-JSON body fails the column |
 | Timeout | `timeoutSec`, 15–300, default 90. The process exit is 124 |
 | In flight | 6 slots. Further armed providers wait |
 | Working directory | `$HOME` |

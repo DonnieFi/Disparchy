@@ -20,6 +20,7 @@ No shell interpolation."""
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
 import os
 import shutil
@@ -52,6 +53,9 @@ DEFAULT_ENDPOINT = {
     "hermes": "http://127.0.0.1:8642",
 }
 CHAT_HTTP = ("openclaw", "hermes")
+MAX_RESPONSE_BYTES = 8 * 1024 * 1024
+MAX_MODELS_BYTES = 1024 * 1024
+MAX_ERROR_BYTES = 300
 DEFAULT_CHAT_MODEL = {
     "openclaw": "openclaw/default",
     "hermes": "hermes-agent",
@@ -178,6 +182,33 @@ def endpoint_or_default(cli: str, endpoint: str) -> str:
     return text or DEFAULT_ENDPOINT.get(cli, "")
 
 
+class ResponseError(Exception):
+    pass
+
+
+def read_json_capped(resp, limit: int) -> dict:
+    declared = resp.headers.get("Content-Length", "")
+    if declared.isdigit() and int(declared) > limit:
+        raise ResponseError(f"response larger than {limit} bytes")
+    try:
+        raw = resp.read(limit + 1)
+    except http.client.IncompleteRead as exc:
+        raise ResponseError("response truncated") from exc
+    if len(raw) > limit:
+        raise ResponseError(f"response larger than {limit} bytes")
+    # http.client returns a short read without raising when the peer
+    # closes before Content-Length; the unread remainder stays in .length.
+    if getattr(resp, "length", None):
+        raise ResponseError("response truncated")
+    try:
+        payload = json.loads(raw.decode() or "{}")
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ResponseError("response is not valid JSON") from exc
+    if not isinstance(payload, dict):
+        raise ResponseError("response is not a JSON object")
+    return payload
+
+
 def http_complete(cli: str, endpoint: str, model: str, prompt: str, timeout: int) -> str:
     base = endpoint_or_default(cli, endpoint).rstrip("/")
     if not base:
@@ -199,9 +230,11 @@ def http_complete(cli: str, endpoint: str, model: str, prompt: str, timeout: int
     )
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            payload = json.loads(resp.read().decode() or "{}")
+            payload = read_json_capped(resp, MAX_RESPONSE_BYTES)
     except urllib.error.URLError as exc:
         raise SystemExit(str(exc.reason or exc)) from exc
+    except ResponseError as exc:
+        raise SystemExit(str(exc)) from exc
     if cli == "ollama":
         return str(payload.get("response") or "")
     choices = payload.get("choices") or []
@@ -424,12 +457,14 @@ def chat_complete(
     )
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            payload = json.loads(resp.read().decode() or "{}")
+            payload = read_json_capped(resp, MAX_RESPONSE_BYTES)
     except urllib.error.HTTPError as exc:
-        detail = exc.read().decode(errors="replace")[:300]
+        detail = exc.read(MAX_ERROR_BYTES).decode(errors="replace")
         raise SystemExit(f"HTTP {exc.code} {detail}") from exc
     except urllib.error.URLError as exc:
         raise SystemExit(str(exc.reason or exc)) from exc
+    except ResponseError as exc:
+        raise SystemExit(str(exc)) from exc
     choices = payload.get("choices") or []
     if not choices:
         return ""
@@ -564,7 +599,7 @@ def print_models() -> None:
         path = "/api/tags" if cli == "ollama" else "/v1/models"
         try:
             with urllib.request.urlopen(base + path, timeout=1.5) as resp:
-                payload = json.loads(resp.read().decode() or "{}")
+                payload = read_json_capped(resp, MAX_MODELS_BYTES)
         except Exception:
             continue
         if cli == "ollama":

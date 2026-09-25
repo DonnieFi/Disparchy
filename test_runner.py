@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Sanity checks for bin/disparchy-run argv. No network. No real CLIs."""
+"""Sanity checks for bin/disparchy-run argv. Loopback only. No real CLIs."""
 from __future__ import annotations
 
 import importlib.machinery
@@ -8,9 +8,11 @@ import io
 import json
 import os
 import re
+import socket
 import subprocess
 import sys
 import tempfile
+import threading
 from contextlib import redirect_stdout
 from pathlib import Path
 
@@ -118,6 +120,79 @@ def test_chat_request_sends_bearer():
     assert url == "http://10.0.0.5:8642/v1/chat/completions"
     assert body["model"] == "custom"
     assert headers["Authorization"] == "Bearer k"
+
+
+def _serve_raw(raw: bytes) -> str:
+    """Answer one request on loopback with raw bytes, then close."""
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    sock.listen(1)
+
+    def answer():
+        conn, _ = sock.accept()
+        with conn:
+            conn.settimeout(5)
+            data = b""
+            while b"\r\n\r\n" not in data:
+                data += conn.recv(65536)
+            head, _, body = data.partition(b"\r\n\r\n")
+            match = re.search(rb"content-length:\s*(\d+)", head, re.I)
+            want = int(match.group(1)) if match else 0
+            while len(body) < want:
+                body += conn.recv(65536)
+            conn.sendall(raw)
+        sock.close()
+
+    threading.Thread(target=answer, daemon=True).start()
+    return "http://127.0.0.1:%d" % sock.getsockname()[1]
+
+
+def _response(body: bytes, length: int | None = None) -> bytes:
+    head = b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\n"
+    if length is not None:
+        head += b"Content-Length: %d\r\n" % length
+    return head + b"\r\n" + body
+
+
+def _http_error(mod, endpoint: str) -> str:
+    try:
+        mod.http_complete("ollama", endpoint, "m", "q", 5)
+    except SystemExit as exc:
+        return str(exc)
+    raise AssertionError("expected SystemExit")
+
+
+def test_http_response_is_capped():
+    mod = load()
+    mod.MAX_RESPONSE_BYTES = 64
+    ok = b'{"response": "hi"}'
+    assert mod.http_complete("ollama", _serve_raw(_response(ok, len(ok))), "m", "q", 5) == "hi"
+    big = b'{"response": "' + b"x" * 200 + b'"}'
+    assert "larger than 64" in _http_error(mod, _serve_raw(_response(big, len(big))))
+    assert "larger than 64" in _http_error(mod, _serve_raw(_response(big)))
+    assert "truncated" in _http_error(mod, _serve_raw(_response(ok[:10], len(ok))))
+    assert "not valid JSON" in _http_error(mod, _serve_raw(_response(b'{"response": ')))
+    assert "not valid JSON" in _http_error(mod, _serve_raw(_response(b'"\xff\xfe"')))
+    assert "not a JSON object" in _http_error(mod, _serve_raw(_response(b"[1]")))
+
+
+def test_chat_response_is_capped():
+    mod = load()
+    mod.MAX_RESPONSE_BYTES = 64
+    big = b'{"choices": [{"message": {"content": "' + b"x" * 200 + b'"}}]}'
+    try:
+        mod.chat_complete("hermes", _serve_raw(_response(big)), "m", "q", 5, "")
+    except SystemExit as exc:
+        assert "larger than 64" in str(exc), exc
+    else:
+        raise AssertionError("expected SystemExit")
+    error = b"HTTP/1.1 500 Oops\r\nConnection: close\r\n\r\n" + b"e" * 5000
+    try:
+        mod.chat_complete("hermes", _serve_raw(error), "m", "q", 5, "")
+    except SystemExit as exc:
+        assert str(exc) == "HTTP 500 " + "e" * mod.MAX_ERROR_BYTES, len(str(exc))
+    else:
+        raise AssertionError("expected SystemExit")
 
 
 FAKE_OPENCLAW = "fixture-openclaw-key"
@@ -793,6 +868,8 @@ if __name__ == "__main__":
     test_file_prompt_argv()
     test_empty_model_omits_flag()
     test_chat_request_sends_bearer()
+    test_http_response_is_capped()
+    test_chat_response_is_capped()
     test_read_bearer_requires_mode_600()
     test_discover_exits_zero()
     test_status_rows()
