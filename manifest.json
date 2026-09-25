@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "dkfiander.disparchy",
   "name": "Disparchy",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "author": "Donnie Fiander",
   "license": "MIT",
   "description": "Comparison panel: one prompt, selected providers, parallel local AI answers.",

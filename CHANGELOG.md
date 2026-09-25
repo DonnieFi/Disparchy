@@ -3,8 +3,10 @@
 All notable changes to Disparchy (`dkfiander.disparchy`) are documented here.
 The version in `manifest.json` is the single source of truth.
 
-## 0.5.0, 2026-09-24
+## 0.6.0, 2026-09-24
 
+- OpenClaw and Hermes API keys are read and written only by the runner. Setup's key field is write-only: Save, Replace, and Remove, and no part of the key is shown
+- `--set-key` stores a key from stdin. `--status` reports `key:saved` or `key:none` and does not print the key
 - Wrapped result columns instead of scrolling sideways
 - Fitted the panel to the result columns
 - Kept the panel width steady and wide enough for Setup

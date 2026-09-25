@@ -1,5 +1,16 @@
 #!/usr/bin/env python3
-"""One-shot runner for Disparchy. Reads an OpenClaw or Hermes bearer key from auth.json and refuses that file if it is a symlink or readable by group or others. Never writes secrets. No shell interpolation."""
+"""One-shot runner for Disparchy. Only this program reads and writes API keys.
+
+Keys live in $XDG_STATE_HOME/omarchy/dkfiander.disparchy/auth.json
+(default ~/.local/state/omarchy/dkfiander.disparchy/auth.json).
+--set-key reads the key from stdin until EOF, never from argv or the
+environment. The state directory is created at mode 0700. auth.json is
+replaced by a temp file in that same directory, opened O_CREAT|O_EXCL
+at mode 0600, fsynced, then renamed into place. A symlink or a
+non-regular state directory or auth.json is refused and nothing is
+written. A loose auth.json (group or other bits) is refused. --status
+prints key:saved or key:none and never any part of a key.
+No shell interpolation."""
 from __future__ import annotations
 
 import argparse
@@ -213,24 +224,117 @@ def chat_request(
     return url, body, headers
 
 
-def read_bearer(path: str, cli: str) -> str:
-    if not path or cli not in CHAT_HTTP:
-        return ""
-    file = Path(path)
-    if file.is_symlink() or not file.is_file():
+def state_dir() -> Path:
+    base = os.environ.get("XDG_STATE_HOME", "").strip()
+    if base:
+        root = Path(base)
+    else:
+        root = Path.home() / ".local" / "state"
+    return root / "omarchy" / "dkfiander.disparchy"
+
+
+def auth_path() -> Path:
+    return state_dir() / "auth.json"
+
+
+def ensure_state_dir() -> Path:
+    path = state_dir()
+    if path.is_symlink():
+        raise SystemExit("state dir refused")
+    if path.exists():
+        if not path.is_dir():
+            raise SystemExit("state dir refused")
+        return path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.mkdir(path, 0o700)
+    except FileExistsError:
+        if path.is_symlink() or not path.is_dir():
+            raise SystemExit("state dir refused")
+    return path
+
+
+def normalize_key(raw: str) -> str:
+    text = raw if isinstance(raw, str) else ""
+    if text.endswith("\n"):
+        text = text[:-1]
+    if text.endswith("\r"):
+        text = text[:-1]
+    return text
+
+
+def load_auth(path: Path) -> dict:
+    if path.is_symlink() or not path.is_file():
         raise SystemExit("auth file refused")
-    if file.stat().st_mode & 0o077:
+    if path.stat().st_mode & 0o077:
         raise SystemExit("auth file must be mode 600")
     try:
-        payload = json.loads(file.read_text(encoding="utf-8"))
+        payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise SystemExit("auth file unreadable") from exc
     if not isinstance(payload, dict):
+        raise SystemExit("auth file unreadable")
+    return payload
+
+
+def atomic_write_auth(directory: Path, payload: dict) -> None:
+    data = (json.dumps(payload, indent=2) + "\n").encode("utf-8")
+    tmp = directory / f".auth-{os.getpid()}-{time.time_ns()}.tmp"
+    fd = os.open(tmp, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    try:
+        os.write(fd, data)
+        os.fsync(fd)
+    except Exception:
+        os.close(fd)
+        tmp.unlink(missing_ok=True)
+        raise
+    os.close(fd)
+    try:
+        os.replace(tmp, directory / "auth.json")
+    except Exception:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
+def set_key(cli: str, raw: str) -> None:
+    if cli not in CHAT_HTTP:
+        raise SystemExit("unknown cli")
+    directory = ensure_state_dir()
+    target = directory / "auth.json"
+    if target.is_symlink():
+        raise SystemExit("auth file refused")
+    if target.exists() and not target.is_file():
+        raise SystemExit("auth file refused")
+    payload = load_auth(target) if target.exists() else {}
+    text = normalize_key(raw)
+    if text == "":
+        payload.pop(cli, None)
+    else:
+        payload[cli] = text
+    atomic_write_auth(directory, payload)
+
+
+def read_bearer(cli: str) -> str:
+    if cli not in CHAT_HTTP:
         return ""
+    file = auth_path()
+    if not file.exists() and not file.is_symlink():
+        return ""
+    payload = load_auth(file)
     key = payload.get(cli)
     if not isinstance(key, str):
         return ""
     return key.strip()
+
+
+def key_column(cli: str) -> str:
+    if cli not in CHAT_HTTP:
+        return "key:none"
+    try:
+        token = read_bearer(cli)
+    except SystemExit:
+        return "key:none"
+    return "key:saved" if token else "key:none"
 
 
 def chat_complete(
@@ -409,10 +513,11 @@ def print_status() -> None:
         binary = resolve(cli)
         if cli == "openclaw" and binary:
             mode = "gateway" if gateway_up() else "local node"
-            print(f"{cli}\tinstalled\t{mode}")
+            print(f"{cli}\tinstalled\t{mode}\t{key_column(cli)}")
             continue
+        key = key_column(cli)
         if not binary:
-            print(f"{cli}\tmissing\t")
+            print(f"{cli}\tmissing\t\t{key}")
             continue
         label = auth_label(cli, binary)
         hint = hints.get(cli, "")
@@ -420,11 +525,11 @@ def print_status() -> None:
             label = "signed-out"
         elif label in ("unknown", "") and hint:
             label = hint
-        print(f"{cli}\tinstalled\t{label}")
+        print(f"{cli}\tinstalled\t{label}\t{key}")
     for cli in HTTP_ALLOWED:
         label = http_auth(cli, "")
         installed = "installed" if label == "signed-in" else "missing"
-        print(f"{cli}\t{installed}\t{label}")
+        print(f"{cli}\t{installed}\t{label}\t{key_column(cli)}")
 
 
 def argv_for(
@@ -490,7 +595,11 @@ def main() -> int:
     p.add_argument("--timeout", type=int, default=90)
     p.add_argument("--prompt-file")
     p.add_argument("--endpoint", default="")
-    p.add_argument("--auth-file", default="")
+    p.add_argument(
+        "--set-key",
+        choices=CHAT_HTTP,
+        help="Read one API key from stdin until EOF and store it. Empty stdin removes it.",
+    )
     p.add_argument(
         "--discover",
         action="store_true",
@@ -499,7 +608,7 @@ def main() -> int:
     p.add_argument(
         "--status",
         action="store_true",
-        help="Print cli, installed|missing, auth label. Does not print API keys.",
+        help="Print cli, installed|missing, auth label, key:saved|key:none. Does not print API keys.",
     )
     p.add_argument(
         "--models",
@@ -507,6 +616,10 @@ def main() -> int:
         help="Print cli, model id, label from each provider. Does not print API keys.",
     )
     args = p.parse_args()
+
+    if args.set_key:
+        set_key(args.set_key, sys.stdin.read())
+        return 0
 
     if args.discover:
         for cli in CLI_ALLOWED:
@@ -526,15 +639,15 @@ def main() -> int:
         return 0
 
     if not args.cli or not args.prompt_file:
-        p.error("--cli and --prompt-file are required unless --discover or --status")
+        p.error("--cli and --prompt-file are required unless --discover, --status, or --set-key")
 
     prompt = open(args.prompt_file, encoding="utf-8").read()
     if len(prompt.encode()) > 32 * 1024:
         print("prompt too large (32KiB cap)", file=sys.stderr)
         return 3
 
-    if args.cli in CHAT_HTTP and args.auth_file:
-        bearer = read_bearer(args.auth_file, args.cli)
+    if args.cli in CHAT_HTTP:
+        bearer = read_bearer(args.cli)
         if bearer:
             text = chat_complete(
                 args.cli,

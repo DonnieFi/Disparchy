@@ -237,13 +237,18 @@ eq(
     "openclaw default endpoint"
 )
 eq(
-    M.setSecret({}, "openclaw", "sekret").openclaw,
-    "sekret",
-    "setSecret stores a key"
+    M.parseProviderStatus("openclaw\tinstalled\tgateway\tkey:saved\nhermes\tmissing\t\tkey:none\n"),
+    [
+        { cli: "openclaw", installed: "installed", auth: "gateway", key: "saved" },
+        { cli: "hermes", installed: "missing", auth: "", key: "none" }
+    ],
+    "status rows keep key:saved and key:none"
 )
-eq(M.setSecret({ openclaw: "sekret" }, "openclaw", ""), {}, "setSecret clears a blank key")
-eq(M.setSecret({}, "claude", "sekret"), {}, "claude has no api key line")
-eq(M.secretFor({ openclaw: "sekret" }, "claude"), "", "secretFor ignores other clis")
+eq(
+    M.parseProviderStatus("openclaw\tinstalled\tgateway\tfixture-openclaw-key\n")[0].key,
+    "none",
+    "a status cell that is not key:saved or key:none is not a key"
+)
 is(M.serializeSelection({ models: {} }).indexOf("sekret") < 0, "selection json has no api key")
 eq(M.setAutoPaste({ models: {} }, true), { models: {}, autoPaste: true }, "autoPaste on")
 eq(M.setAutoPaste({ models: {}, autoPaste: true }, false), { models: {} }, "autoPaste off")

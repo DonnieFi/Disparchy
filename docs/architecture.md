@@ -16,14 +16,14 @@ After installing or updating, run `omarchy-restart-shell`.
 
 `$XDG_STATE_HOME/omarchy/dkfiander.disparchy/`
 
-Usually `~/.local/state/omarchy/dkfiander.disparchy/`. The panel sets this directory to mode `0700` and the files in it to mode `0600`. The Security section describes the first save.
+Usually `~/.local/state/omarchy/dkfiander.disparchy/`. The panel sets this directory to mode `0700` and the files it writes to mode `0600`. It does not read or write `auth.json`. The runner creates that file itself at mode `0600`.
 
 State stays out of the plugin tree. The shell watches that tree and reloads QML on every write.
 
 | File | Purpose |
 |------|---------|
 | `selection.json` | Armed models, enabled providers, HTTP URLs, `autoPaste` |
-| `auth.json` | API keys for OpenClaw and Hermes. The runner refuses a symlink or a file readable by group or others |
+| `auth.json` | API keys for OpenClaw and Hermes. Only `bin/disparchy-run` reads or writes this file. It refuses a symlink, anything that is not a regular file, or a file readable by group or others |
 | `history.json` | Past runs, capped by `historyMaxRuns` |
 | `prompt.txt` | Prompt for the current send. The runner reads this file |
 | `status.json` | Last provider probe. The panel rewrites it |
@@ -84,7 +84,8 @@ bin/disparchy-run --discover
 | Flag | Prints |
 |------|--------|
 | `--models` | `cli`, model id, label. At most 30 ids per CLI |
-| `--status` | `cli`, `installed` or `missing`, then a label |
+| `--status` | `cli`, `installed` or `missing`, a label, then `key:saved` or `key:none` |
+| `--set-key <cli>` | Reads one API key from stdin until EOF and stores it. Empty stdin removes that provider's key. The key is never an argument |
 | `--discover` | one CLI id per line, for binaries on `PATH` and HTTP servers that answered |
 
 Status labels include `signed-in`, `signed-out`, `gateway`, and `local node`. The panel turns those into **install**, **sign in**, **open**, **gateway**, **local node**, **reachable**, and **endpoint down**.
@@ -114,6 +115,6 @@ One failure does not cancel its siblings.
 
 ## Security
 
-The plugin is unsandboxed code in `omarchy-shell`. API keys for OpenClaw and Hermes are stored in `auth.json` in the state folder (`$XDG_STATE_HOME/omarchy/dkfiander.disparchy/`, default `~/.local/state/omarchy/dkfiander.disparchy/`). They are never written into the plugin folder. The first save creates that file at the process umask, usually `0644`. A later atomic rewrite keeps the mode the file already has, so a file that is already `0600` stays `0600`. After saving, the plugin sets the state files to mode `0600`, and the runner refuses to read `auth.json` if it is a symlink or readable by group or others. The panel also sets the state folder to mode `0700`, including when that folder already exists with a wider mode. A save can create the folder through Quickshell before that step, at the normal directory mode, usually `0755`. Parent directories are not changed. Once the state folder is `0700`, other users cannot reach `auth.json` during the window when the file is still `0644`. The plugin never passes `--force`, `--yolo`, `--always-approve`, or `--dangerously-skip-permissions`.
+The plugin is unsandboxed code in `omarchy-shell`. API keys for OpenClaw and Hermes stay in `auth.json` in the state folder (`$XDG_STATE_HOME/omarchy/dkfiander.disparchy/`, default `~/.local/state/omarchy/dkfiander.disparchy/`). Only `bin/disparchy-run` reads or writes that file. The panel never opens it, and the key is not copied into a panel property, the history file, or settings. `--set-key <cli>` reads the key from stdin until EOF, never from argv or the environment. If the state directory is missing, the runner creates it at mode `0700`. It refuses a symlink or a non-regular file for that directory or for `auth.json`, and then writes nothing. Otherwise it writes a temporary file in the same directory, opened with `O_CREAT|O_EXCL` at mode `0600` so the umask cannot widen it, fsyncs that file, and renames it over `auth.json`. Empty stdin, after one trailing newline is stripped, removes that provider's key and leaves the others. `--status` adds a `key:saved` or `key:none` column and never prints any part of a key. The runner still refuses to read `auth.json` when it is a symlink or readable by group or others. The plugin never passes `--force`, `--yolo`, `--always-approve`, or `--dangerously-skip-permissions`.
 
 Sign-in is `xdg-terminal-exec --hold --title=Disparchy --` plus the CLI login command. HTTP providers have no login launch.
