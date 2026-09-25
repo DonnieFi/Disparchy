@@ -396,6 +396,53 @@ def test_send_refuses_loose_auth_file():
         assert stat_mode(auth) == 0o644
 
 
+def test_status_key_refused_when_read_would_refuse():
+    with tempfile.TemporaryDirectory() as folder:
+        root = Path(folder)
+        auth = _loose_auth(root, '{"openclaw": "%s"}\n' % FAKE_OPENCLAW)
+
+        def rows_of():
+            proc = subprocess.run(
+                [sys.executable, str(RUNNER), "--status"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                env=_isolated_env(root),
+            )
+            assert proc.returncode == 0, proc.stderr
+            blob = proc.stdout + proc.stderr
+            assert FAKE_OPENCLAW not in blob
+            assert FAKE_HERMES not in blob
+            return {
+                line.split("\t")[0]: line.split("\t")[-1]
+                for line in proc.stdout.splitlines()
+                if line.strip()
+            }
+
+        loose = rows_of()
+        assert loose["openclaw"] == "key:refused"
+        assert loose["hermes"] == "key:refused"
+        assert loose["claude"] == "key:none"
+        os.chmod(auth, 0o600)
+        assert stat_mode(auth) == 0o600
+        tight = rows_of()
+        assert tight["openclaw"] == "key:saved"
+        assert tight["hermes"] == "key:none"
+        assert tight["claude"] == "key:none"
+        outside = root / "outside.json"
+        outside.write_text('{"openclaw": "%s"}\n' % FAKE_OPENCLAW, encoding="utf-8")
+        os.chmod(outside, 0o600)
+        before = outside.read_bytes()
+        auth.unlink()
+        auth.symlink_to(outside)
+        linked = rows_of()
+        assert linked["openclaw"] == "key:refused"
+        assert linked["hermes"] == "key:refused"
+        assert outside.read_bytes() == before
+        assert auth.is_symlink()
+
+
 def test_set_key_refuses_other_owner():
     mod = load()
     real_getuid = os.getuid
@@ -490,6 +537,7 @@ if __name__ == "__main__":
     test_set_key_repairs_loose_auth_file()
     test_set_key_removes_from_loose_auth_file()
     test_send_refuses_loose_auth_file()
+    test_status_key_refused_when_read_would_refuse()
     test_set_key_refuses_other_owner()
     test_auth_file_flag_is_rejected()
     test_qml_does_not_touch_keys()
