@@ -301,18 +301,60 @@ eq(
     "none",
     "an unknown status cell is not a key"
 )
-eq(M.keyUnusableLine, "", "unusable copy is not invented")
+var home = "/home/person"
+var authInHome = "/home/person/.local/state/omarchy/dkfiander.disparchy/auth.json"
+var movedLine = "Disparchy won't read or change this file. Move ~/.local/state/omarchy/dkfiander.disparchy/auth.json aside, then add your key again."
+eq(M.authFile(home, ""), authInHome, "auth file sits in the state folder")
+eq(M.keyUnusableLine(authInHome, home), movedLine, "home prefix becomes a tilde")
+eq(M.keyUnusableLine(authInHome, home + "/"), movedLine, "a trailing slash on home still substitutes")
+is(M.keyUnusableLine(authInHome, home).indexOf("person") < 0, "the tilde hides the username")
+var outside = "/var/lib/disparchy-state/omarchy/dkfiander.disparchy/auth.json"
+eq(M.authFile(home, "/var/lib/disparchy-state"), outside, "xdg state outside home is the base")
 eq(
-    M.keyFileNote("auth file must be mode 600", "refused"),
+    M.keyUnusableLine(outside, home),
+    "Disparchy won't read or change this file. Move " + outside + " aside, then add your key again.",
+    "a state dir outside home stays absolute"
+)
+eq(
+    M.keyUnusableLine("/home/personal/auth.json", home),
+    "Disparchy won't read or change this file. Move /home/personal/auth.json aside, then add your key again.",
+    "a longer directory name is not the home folder"
+)
+eq(
+    M.keyFileNote("auth file must be mode 600", "refused", authInHome, home),
     "Other users can read this key's file. Replace it to fix that.",
     "refused provider note"
 )
 eq(
-    M.keyFileNote("auth file refused", "unusable"),
-    "",
-    "unusable provider does not use the refused line"
+    M.keyFileNote("auth file refused", "unusable", authInHome, home),
+    movedLine,
+    "unusable provider uses the move-aside line"
 )
-eq(M.keyFileNote("connection refused", "refused"), "", "other send errors stay raw")
+eq(
+    M.keyFileNote("auth file unreadable", "unusable", authInHome, home),
+    movedLine,
+    "unreadable auth uses the move-aside line"
+)
+is(
+    M.keyFileNote("auth file refused", "unusable", authInHome, home).indexOf("Other users can read") < 0,
+    "unusable does not use the refused line"
+)
+eq(M.keyFileNote("connection refused", "refused", authInHome, home), "", "other send errors stay raw")
+eq(
+    M.parseProviderStatus("openclaw\tinstalled\tgateway\tkey:none\n")[0].key,
+    "none",
+    "a moved-aside file parses as key:none"
+)
+eq(M.keyEditorOpen("none", false), true, "key:none opens Paste API key")
+eq(M.keyEditorOpen("unusable", false), false, "unusable hides the paste field")
+eq(M.keyEditorOpen("unusable", true), false, "unusable stays closed while replacing")
+eq(M.keyEditorOpen("saved", false), false, "a saved key hides the paste field")
+eq(M.keyEditorOpen("saved", true), true, "replace opens the paste field")
+eq(M.keyEditorOpen("refused", false), false, "refused hides the paste field")
+eq(M.keyHasActions("unusable"), false, "unusable has no Replace or Remove")
+eq(M.keyHasActions("none"), false, "the paste field has no Replace or Remove")
+eq(M.keyHasActions("saved"), true, "a saved key can be replaced or removed")
+eq(M.keyHasActions("refused"), true, "a refused key can be replaced or removed")
 is(M.serializeSelection({ models: {} }).indexOf("sekret") < 0, "selection json has no api key")
 eq(M.setAutoPaste({ models: {} }, true), { models: {}, autoPaste: true }, "autoPaste on")
 eq(M.setAutoPaste({ models: {}, autoPaste: true }, false), { models: {} }, "autoPaste off")

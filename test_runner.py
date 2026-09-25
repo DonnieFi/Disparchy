@@ -548,6 +548,12 @@ def test_set_key_refuses_broken_json():
         assert removed.returncode != 0, removed.stdout
         assert auth.read_bytes() == before
         assert stat_mode(auth) == 0o600
+        aside = auth.with_name("auth.json.aside")
+        auth.rename(aside)
+        cleared = _status_rows(root)
+        assert cleared["openclaw"] == "key:none"
+        assert cleared["hermes"] == "key:none"
+        assert aside.read_bytes() == before
 
 
 def test_status_loose_broken_json_is_unusable():
