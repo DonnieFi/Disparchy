@@ -160,12 +160,12 @@ Bar-widget settings, also stored in `shell.json` under the widget entry:
 
 Which providers are on the bar, which models you picked, and whether auto-paste is on, live in `selection.json`. That file is not in the widget schema.
 
-Runtime state lives under `$XDG_STATE_HOME/omarchy/dkfiander.disparchy/`. When that variable is unset, the directory is `~/.local/state/omarchy/dkfiander.disparchy/`. The panel sets that directory to mode `0700` and the files in it to mode `0600`. The first save of a new file is usually mode `0644` until that step, and a rewrite keeps the mode the file already has. Nothing here is written into the plugin tree, because the shell watches that tree and reloads on every write.
+Runtime state lives under `$XDG_STATE_HOME/omarchy/dkfiander.disparchy/`. When that variable is unset, the directory is `~/.local/state/omarchy/dkfiander.disparchy/`. Nothing here is written into the plugin tree, because the shell watches that tree and reloads on every write. Only `bin/disparchy-run` reads and writes API keys.
 
 | File | Purpose |
 |------|---------|
 | `selection.json` | Armed models, enabled providers, HTTP URLs, `autoPaste` |
-| `auth.json` | API keys for OpenClaw and Hermes. Never written into the plugin tree. The runner refuses a symlink or a file readable by group or others |
+| `auth.json` | API keys for OpenClaw and Hermes. Only the runner reads and writes this file, at mode `0600`. It refuses a symlink or a file readable by group or others |
 | `history.json` | Past runs |
 | `prompt.txt` | The prompt file each send reads |
 | `status.json` | Last provider probe. Rewritten by the panel |
@@ -231,7 +231,7 @@ prompt.txt  ──►  disparchy-run --cli … --prompt-file …
 
 Up to six providers run at once. A seventh waits for a free slot. **Cancel** stops the queue. Columns already running finish or time out on their own.
 
-The runner never passes `--force`, `--yolo`, `--always-approve`, or `--dangerously-skip-permissions`. It does not read `~/.grok/auth.json`. An OpenClaw or Hermes API key stays in `auth.json`. The send command receives that path, and the runner puts the key on the `Authorization` header. Codex runs as `codex exec --skip-git-repo-check`, with stdin closed, because `$HOME` is not a trusted git directory.
+The runner never passes `--force`, `--yolo`, `--always-approve`, or `--dangerously-skip-permissions`. It does not read `~/.grok/auth.json`. An OpenClaw or Hermes API key stays in `auth.json`. The runner finds that file itself and, when a key is saved, puts it on the `Authorization` header. Setup's key field is write-only: **Save** runs `disparchy-run --set-key <cli>` with the text on stdin. Codex runs as `codex exec --skip-git-repo-check`, with stdin closed, because `$HOME` is not a trusted git directory.
 
 Command lines, the selection file, and the caps are in [`docs/architecture.md`](docs/architecture.md).
 

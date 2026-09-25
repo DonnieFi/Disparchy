@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import importlib.machinery
 import importlib.util
+import os
+import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from test_model import test_model
@@ -114,24 +117,38 @@ def test_chat_request_sends_bearer():
     assert headers["Authorization"] == "Bearer k"
 
 
-def test_read_bearer_requires_mode_600():
-    import os
-    import tempfile
+FAKE_OPENCLAW = "fixture-openclaw-key"
+FAKE_HERMES = "fixture-hermes-key"
 
+
+def _isolated_env(folder: Path) -> dict[str, str]:
+    env = os.environ.copy()
+    env["XDG_STATE_HOME"] = str(folder)
+    env.pop("DISPARCHY_AUTH", None)
+    return env
+
+
+def test_read_bearer_requires_mode_600():
     mod = load()
     with tempfile.TemporaryDirectory() as folder:
-        path = Path(folder) / "auth.json"
-        path.write_text('{"openclaw": "sekret"}\n', encoding="utf-8")
-        os.chmod(path, 0o644)
+        os.environ["XDG_STATE_HOME"] = folder
         try:
-            mod.read_bearer(str(path), "openclaw")
-        except SystemExit as exc:
-            assert "mode 600" in str(exc)
-        else:
-            raise AssertionError("loose auth file was accepted")
-        os.chmod(path, 0o600)
-        assert mod.read_bearer(str(path), "openclaw") == "sekret"
-        assert mod.read_bearer(str(path), "hermes") == ""
+            state = Path(folder) / "omarchy" / "dkfiander.disparchy"
+            state.mkdir(parents=True, mode=0o700)
+            path = state / "auth.json"
+            path.write_text('{"openclaw": "%s"}\n' % FAKE_OPENCLAW, encoding="utf-8")
+            os.chmod(path, 0o644)
+            try:
+                mod.read_bearer("openclaw")
+            except SystemExit as exc:
+                assert "mode 600" in str(exc)
+            else:
+                raise AssertionError("loose auth file was accepted")
+            os.chmod(path, 0o600)
+            assert mod.read_bearer("openclaw") == FAKE_OPENCLAW
+            assert mod.read_bearer("hermes") == ""
+        finally:
+            os.environ.pop("XDG_STATE_HOME", None)
 
 
 def test_discover_exits_zero():
@@ -150,25 +167,212 @@ def test_discover_exits_zero():
 
 
 def test_status_rows():
-    proc = subprocess.run(
-        [sys.executable, str(RUNNER), "--status"],
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
+    with tempfile.TemporaryDirectory() as folder:
+        proc = subprocess.run(
+            [sys.executable, str(RUNNER), "--status"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            env=_isolated_env(Path(folder)),
+        )
     assert proc.returncode == 0, proc.stderr
     lines = [line for line in proc.stdout.splitlines() if line.strip()]
     assert len(lines) == 9, lines
     seen = set()
     for line in lines:
-        cli, installed, _auth = line.split("\t")
+        cli, installed, _auth, key = line.split("\t")
         assert installed in {"installed", "missing"}, line
+        assert key in {"key:saved", "key:none"}, line
+        assert FAKE_OPENCLAW not in line
         seen.add(cli)
     assert seen == {
         "claude", "codex", "grok", "antigravity", "cursor",
         "openclaw", "hermes", "ollama", "lmstudio",
     }
+    assert FAKE_OPENCLAW not in proc.stdout
+    assert FAKE_OPENCLAW not in proc.stderr
+    assert FAKE_HERMES not in proc.stdout
+    assert FAKE_HERMES not in proc.stderr
+
+
+def _run_set_key(folder: Path, cli: str, payload: str, umask: int | None = None):
+    if umask is None:
+        return subprocess.run(
+            [sys.executable, str(RUNNER), "--set-key", cli],
+            input=payload,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            env=_isolated_env(folder),
+        )
+    wrapper = (
+        "import os, sys\n"
+        "os.umask(%d)\n"
+        "os.execv(sys.executable, [sys.executable, %r, '--set-key', %r])\n"
+        % (umask, str(RUNNER), cli)
+    )
+    return subprocess.run(
+        [sys.executable, "-c", wrapper],
+        input=payload,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=5,
+        env=_isolated_env(folder),
+    )
+
+
+def test_set_key_mode_under_umask():
+    with tempfile.TemporaryDirectory() as folder:
+        root = Path(folder)
+        proc = _run_set_key(root, "openclaw", FAKE_OPENCLAW + "\n", umask=0o022)
+        assert proc.returncode == 0, proc.stderr
+        state = root / "omarchy" / "dkfiander.disparchy"
+        auth = state / "auth.json"
+        assert stat_mode(state) == 0o700
+        assert stat_mode(auth) == 0o600
+        assert FAKE_OPENCLAW not in proc.stdout
+        assert FAKE_OPENCLAW not in proc.stderr
+
+
+def stat_mode(path: Path) -> int:
+    return path.stat().st_mode & 0o777
+
+
+def test_set_key_temp_is_same_directory():
+    mod = load()
+    opened = []
+    real_open = os.open
+
+    def wrapped(path, flags, mode=0o777, *args, **kwargs):
+        if flags & os.O_CREAT and flags & os.O_EXCL:
+            opened.append(os.path.abspath(path))
+        return real_open(path, flags, mode, *args, **kwargs)
+
+    with tempfile.TemporaryDirectory() as folder:
+        os.environ["XDG_STATE_HOME"] = folder
+        os.open = wrapped
+        try:
+            mod.set_key("hermes", FAKE_HERMES + "\n")
+        finally:
+            os.open = real_open
+            os.environ.pop("XDG_STATE_HOME", None)
+        state = Path(folder) / "omarchy" / "dkfiander.disparchy"
+        assert opened, "temp file was not created with O_CREAT|O_EXCL"
+        assert Path(opened[0]).parent == state
+        assert not list(state.glob(".auth-*.tmp"))
+
+
+def test_set_key_refuses_symlink_dir():
+    with tempfile.TemporaryDirectory() as folder:
+        root = Path(folder)
+        target = root / "real-state"
+        target.mkdir()
+        marker = target / "untouched.txt"
+        marker.write_text("leave-me\n", encoding="utf-8")
+        link_parent = root / "xdg" / "omarchy"
+        link_parent.mkdir(parents=True)
+        link = link_parent / "dkfiander.disparchy"
+        link.symlink_to(target, target_is_directory=True)
+        before = marker.read_bytes()
+        proc = _run_set_key(root / "xdg", "openclaw", FAKE_OPENCLAW + "\n")
+        assert proc.returncode != 0, proc.stdout
+        assert marker.read_bytes() == before
+        assert link.is_symlink()
+        assert not (target / "auth.json").exists()
+
+
+def test_set_key_refuses_symlink_file():
+    with tempfile.TemporaryDirectory() as folder:
+        root = Path(folder)
+        state = root / "omarchy" / "dkfiander.disparchy"
+        state.mkdir(parents=True, mode=0o700)
+        outside = root / "outside.json"
+        outside.write_text('{"hermes": "leave-hermes"}\n', encoding="utf-8")
+        os.chmod(outside, 0o600)
+        auth = state / "auth.json"
+        auth.symlink_to(outside)
+        before = outside.read_bytes()
+        proc = _run_set_key(root, "openclaw", FAKE_OPENCLAW + "\n")
+        assert proc.returncode != 0, proc.stdout
+        assert outside.read_bytes() == before
+        assert auth.is_symlink()
+        assert FAKE_OPENCLAW not in outside.read_text(encoding="utf-8")
+
+
+def test_set_key_stores_and_removes_within_timeout():
+    with tempfile.TemporaryDirectory() as folder:
+        root = Path(folder)
+        saved = _run_set_key(root, "openclaw", FAKE_OPENCLAW + "\n")
+        assert saved.returncode == 0, saved.stderr
+        other = _run_set_key(root, "hermes", FAKE_HERMES + "\n")
+        assert other.returncode == 0, other.stderr
+        auth = root / "omarchy" / "dkfiander.disparchy" / "auth.json"
+        text = auth.read_text(encoding="utf-8")
+        assert FAKE_OPENCLAW in text and FAKE_HERMES in text
+        removed = _run_set_key(root, "openclaw", "")
+        assert removed.returncode == 0, removed.stderr
+        after = auth.read_text(encoding="utf-8")
+        assert FAKE_OPENCLAW not in after
+        assert FAKE_HERMES in after
+        status = subprocess.run(
+            [sys.executable, str(RUNNER), "--status"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            env=_isolated_env(root),
+        )
+        assert status.returncode == 0, status.stderr
+        rows = {line.split("\t")[0]: line.split("\t")[-1] for line in status.stdout.splitlines() if line.strip()}
+        assert rows["openclaw"] == "key:none"
+        assert rows["hermes"] == "key:saved"
+        assert rows["claude"] == "key:none"
+        blob = status.stdout + status.stderr
+        assert FAKE_OPENCLAW not in blob
+        assert FAKE_HERMES not in blob
+
+
+def test_auth_file_flag_is_rejected():
+    proc = subprocess.run(
+        [sys.executable, str(RUNNER), "--auth-file", "unused.json"],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+    assert proc.returncode != 0
+    assert "unrecognized arguments" in proc.stderr
+    assert "--auth-file" in proc.stderr
+
+
+def test_qml_does_not_touch_keys():
+    banned = ("parseAuth", "secretFor", "setSecret", "serializeAuth", "copySecrets")
+    for path in ROOT.glob("*.qml"):
+        body = path.read_text(encoding="utf-8")
+        assert "auth.json" not in body, path.name
+        for name in banned:
+            assert name not in body, (path.name, name)
+
+
+def test_set_key_command_is_stdin_only():
+    text = (ROOT / "Panel.qml").read_text(encoding="utf-8")
+    match = re.search(r'command\s*=\s*\[([^\]]*"--set-key"[^\]]*)\]', text)
+    assert match, "set-key command missing"
+    array = match.group(1)
+    assert ".text" not in array
+    assert "environment" not in array
+    assert "console.log" not in text[match.start(): match.end() + 200]
+    for line in text.splitlines():
+        if "secretEdit.text" not in line and "field.text" not in line:
+            continue
+        if re.search(r'(secretEdit|field)\.text\s*=\s*""', line):
+            continue
+        if "write(" in line:
+            continue
+        raise AssertionError("key text left the field: " + line.strip())
 
 
 def test_missing_args_fail():
@@ -193,6 +397,14 @@ if __name__ == "__main__":
     test_read_bearer_requires_mode_600()
     test_discover_exits_zero()
     test_status_rows()
+    test_set_key_mode_under_umask()
+    test_set_key_temp_is_same_directory()
+    test_set_key_refuses_symlink_dir()
+    test_set_key_refuses_symlink_file()
+    test_set_key_stores_and_removes_within_timeout()
+    test_auth_file_flag_is_rejected()
+    test_qml_does_not_touch_keys()
+    test_set_key_command_is_stdin_only()
     test_missing_args_fail()
     test_model()
     print("ok")
