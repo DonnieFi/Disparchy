@@ -32,9 +32,11 @@ function settingKeyFor(cli) {
 }
 
 function stateDir(home, xdgState) {
-    var base = String(xdgState || "").replace(/\/$/, "")
+    var base = String(xdgState || "").trim()
     if (!base)
         base = String(home || "").replace(/\/$/, "") + "/.local/state"
+    else
+        base = base.replace(/\/$/, "")
     return base + "/omarchy/" + pluginId()
 }
 

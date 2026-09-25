@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.machinery
 import importlib.util
 import io
+import json
 import os
 import re
 import subprocess
@@ -700,6 +701,79 @@ def test_set_key_command_is_stdin_only():
         raise AssertionError("key text left the field: " + line.strip())
 
 
+def test_auth_path_matches_model_state_dir():
+    """Model.authFile follows the runner's auth_path for the same HOME and XDG_STATE_HOME."""
+    home = "/home/person"
+    cases = (
+        ("unset", None, True),
+        ("empty", "", True),
+        ("whitespace", "   ", True),
+        ("inside", home + "/state", True),
+        ("outside", "/var/lib/disparchy-state", False),
+    )
+    for name, xdg, inside in cases:
+        runner = _runner_auth_path(home, xdg)
+        auth, display = _model_auth_file(home, xdg)
+        assert auth == runner, (name, auth, runner)
+        if inside:
+            assert runner.startswith(home + "/"), (name, runner)
+            assert display == "~" + runner[len(home):], (name, display, runner)
+            assert display.startswith("~/"), (name, display)
+        else:
+            assert not runner.startswith(home + "/"), (name, runner)
+            assert display == runner, (name, display, runner)
+            assert not display.startswith("~"), (name, display)
+
+
+def _runner_auth_path(home: str, xdg: str | None) -> str:
+    mod = load()
+    previous_home = os.environ.get("HOME")
+    had_xdg = "XDG_STATE_HOME" in os.environ
+    previous_xdg = os.environ.get("XDG_STATE_HOME")
+    try:
+        os.environ["HOME"] = home
+        if xdg is None:
+            os.environ.pop("XDG_STATE_HOME", None)
+        else:
+            os.environ["XDG_STATE_HOME"] = xdg
+        return os.fspath(mod.auth_path())
+    finally:
+        if previous_home is None:
+            os.environ.pop("HOME", None)
+        else:
+            os.environ["HOME"] = previous_home
+        if had_xdg:
+            assert previous_xdg is not None
+            os.environ["XDG_STATE_HOME"] = previous_xdg
+        else:
+            os.environ.pop("XDG_STATE_HOME", None)
+
+
+def _model_auth_file(home: str, xdg: str | None) -> tuple[str, str]:
+    script = """
+const fs = require("fs")
+const vm = require("vm")
+const M = {}
+vm.createContext(M)
+vm.runInContext(fs.readFileSync(process.argv[1], "utf8"), M)
+const home = process.argv[2]
+const spec = JSON.parse(process.argv[3])
+const auth = M.authFile(home, spec.unset ? undefined : spec.value)
+const display = M.displayPath(auth, home)
+process.stdout.write(JSON.stringify({ auth: auth, display: display }))
+"""
+    spec = {"unset": xdg is None, "value": "" if xdg is None else xdg}
+    proc = subprocess.run(
+        ["node", "-e", script, "--", str(ROOT / "Model.js"), home, json.dumps(spec)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+    parsed = json.loads(proc.stdout)
+    return parsed["auth"], parsed["display"]
+
+
 def test_missing_args_fail():
     proc = subprocess.run(
         [sys.executable, str(RUNNER)],
@@ -742,6 +816,7 @@ if __name__ == "__main__":
     test_auth_file_flag_is_rejected()
     test_qml_does_not_touch_keys()
     test_set_key_command_is_stdin_only()
+    test_auth_path_matches_model_state_dir()
     test_missing_args_fail()
     test_model()
     print("ok")
