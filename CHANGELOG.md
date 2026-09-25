@@ -3,6 +3,10 @@
 All notable changes to Disparchy (`dkfiander.disparchy`) are documented here.
 The version in `manifest.json` is the single source of truth.
 
+## 0.6.3, 2026-09-25
+
+- **copy** writes the answer to `wl-copy` on stdin. It was an argument, and `wl-copy` keeps running while it owns the clipboard, so the answer stayed in the process list until the next copy
+
 ## 0.6.2, 2026-09-25
 
 - The prompt is no longer passed as a command-line argument, where other local users could read it in the process list. Claude, Codex, and Cursor read it from stdin, Grok uses `--prompt-file`, and Antigravity reads it from stdin in stream-json mode

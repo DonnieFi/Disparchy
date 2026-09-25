@@ -64,7 +64,7 @@ HTTP providers are available when enabled, even if the server is down.
 | `ollama` | HTTP | `POST {base}/api/generate` with `model`, `prompt`, `stream: false` |
 | `lmstudio` | HTTP | `POST {base}/v1/chat/completions` |
 
-The prompt text is never an argument, because any local user can read another process's command line. `argv_for` takes only the prompt file path. Cursor never receives `-m`.
+The prompt text is never an argument, because any local user can read another process's command line. `argv_for` takes only the prompt file path. For the same reason, **copy** runs a bare `wl-copy` and writes the answer to its stdin, since `wl-copy` keeps running while it owns the clipboard. Cursor never receives `-m`.
 
 OpenClaw's gateway probe is a TCP connect to `127.0.0.1:18789` with a 0.4s timeout.
 

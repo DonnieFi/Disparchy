@@ -831,6 +831,12 @@ def test_qml_does_not_touch_keys():
             assert name not in body, (path.name, name)
 
 
+def test_copy_text_is_stdin_only():
+    body = (ROOT / "Panel.qml").read_text(encoding="utf-8")
+    calls = re.findall(r'\["wl-copy"[^\]]*\]', body)
+    assert calls == ['["wl-copy"]'], calls
+
+
 def test_set_key_command_is_stdin_only():
     text = (ROOT / "Panel.qml").read_text(encoding="utf-8")
     match = re.search(r'command\s*=\s*\[([^\]]*"--set-key"[^\]]*)\]', text)
@@ -969,6 +975,7 @@ if __name__ == "__main__":
     test_auth_file_flag_is_rejected()
     test_qml_does_not_touch_keys()
     test_set_key_command_is_stdin_only()
+    test_copy_text_is_stdin_only()
     test_auth_path_matches_model_state_dir()
     test_missing_args_fail()
     test_model()

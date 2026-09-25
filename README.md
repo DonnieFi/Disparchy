@@ -10,7 +10,7 @@ Write one prompt, choose the providers, and compare their answers side by side. 
 
 [![Omarchy](https://img.shields.io/badge/Omarchy-plugin-00d3f2?style=flat-square)](https://omarchy.org)
 [![Quickshell](https://img.shields.io/badge/Quickshell-QML-5e81ac?style=flat-square)](https://quickshell.org)
-[![Version](https://img.shields.io/badge/version-0.6.2-4fc9d6?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.6.3-4fc9d6?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-a3be8c?style=flat-square)](LICENSE)
 
 Plugin id: `dkfiander.disparchy` · Install: `~/.config/omarchy/plugins/dkfiander.disparchy/`  
@@ -223,7 +223,7 @@ prompt.txt  ──►  disparchy-run --cli … --prompt-file …
 
 Up to six providers run at once. A seventh waits for a free slot. **Cancel** stops the queue. Columns already running finish or time out on their own.
 
-The runner never passes `--force`, `--yolo`, `--always-approve`, or `--dangerously-skip-permissions`. It does not read `~/.grok/auth.json`. An OpenClaw or Hermes API key stays in `auth.json`. The runner finds that file itself and, when a key is saved, puts it on the `Authorization` header. Setup's key field is write-only: **Save** runs `disparchy-run --set-key <cli>` with the text on stdin. The prompt never appears on a command line: Claude, Codex, Cursor, and Antigravity read it from stdin, and Grok, OpenClaw, and Hermes read the prompt file. Codex runs as `codex exec --skip-git-repo-check -`, because `$HOME` is not a trusted git directory.
+The runner never passes `--force`, `--yolo`, `--always-approve`, or `--dangerously-skip-permissions`. It does not read `~/.grok/auth.json`. An OpenClaw or Hermes API key stays in `auth.json`. The runner finds that file itself and, when a key is saved, puts it on the `Authorization` header. Setup's key field is write-only: **Save** runs `disparchy-run --set-key <cli>` with the text on stdin. **copy** hands the answer to `wl-copy` on stdin, not as an argument. The prompt never appears on a command line: Claude, Codex, Cursor, and Antigravity read it from stdin, and Grok, OpenClaw, and Hermes read the prompt file. Codex runs as `codex exec --skip-git-repo-check -`, because `$HOME` is not a trusted git directory.
 
 Command lines, the selection file, and the caps are in [`docs/architecture.md`](docs/architecture.md).
 
