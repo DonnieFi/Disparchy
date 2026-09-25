@@ -3,6 +3,10 @@
 All notable changes to Disparchy (`dkfiander.disparchy`) are documented here.
 The version in `manifest.json` is the single source of truth.
 
+## 0.6.4, 2026-09-25
+
+- `./install` stages in a new private directory from `mktemp -d` instead of the fixed `~/.config/omarchy/.disparchy-install.tmp` and `.bak`, and removes only that directory. An unrelated directory at either old name is no longer deleted. If the previous install cannot be put back, it is kept and its path is printed
+
 ## 0.6.3, 2026-09-25
 
 - **copy** writes the answer to `wl-copy` on stdin. It was an argument, and `wl-copy` keeps running while it owns the clipboard, so the answer stayed in the process list until the next copy

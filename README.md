@@ -10,7 +10,7 @@ Write one prompt, choose the providers, and compare their answers side by side. 
 
 [![Omarchy](https://img.shields.io/badge/Omarchy-plugin-00d3f2?style=flat-square)](https://omarchy.org)
 [![Quickshell](https://img.shields.io/badge/Quickshell-QML-5e81ac?style=flat-square)](https://quickshell.org)
-[![Version](https://img.shields.io/badge/version-0.6.3-4fc9d6?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.6.4-4fc9d6?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-a3be8c?style=flat-square)](LICENSE)
 
 Plugin id: `dkfiander.disparchy` · Install: `~/.config/omarchy/plugins/dkfiander.disparchy/`  
@@ -59,7 +59,7 @@ omarchy plugin add https://github.com/DonnieFi/Disparchy.git --enable
 omarchy bar move dkfiander.disparchy --section right
 ```
 
-From a checkout, `./install` copies the files the shell loads into `~/.config/omarchy/plugins/dkfiander.disparchy`. A symlink is replaced. An existing copy is refreshed. Runtime state under `$XDG_STATE_HOME/omarchy/dkfiander.disparchy/` is left alone.
+From a checkout, `./install` copies the files the shell loads into `~/.config/omarchy/plugins/dkfiander.disparchy`. A symlink is replaced. An existing copy is refreshed. It stages in a new private directory (`mktemp -d`) beside `plugins/` and removes only that directory, so nothing that existed before the run is deleted. Runtime state under `$XDG_STATE_HOME/omarchy/dkfiander.disparchy/` is left alone.
 
 ```bash
 ./install
