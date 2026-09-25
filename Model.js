@@ -377,43 +377,22 @@ function needsSecret(cli) {
     return !!(row && row.auth)
 }
 
-function copySecrets(src) {
-    var out = {}
-    if (!src || typeof src !== "object" || Array.isArray(src)) return out
-    for (var k in src) {
-        if (!Object.prototype.hasOwnProperty.call(src, k)) continue
-        if (!needsSecret(k)) continue
-        var text = String(src[k] || "").replace(/\s+/g, "")
-        if (!text || text.length > 4096) continue
-        out[k] = text
+function parseProviderStatus(raw) {
+    var rows = []
+    var lines = String(raw || "").split(/\r?\n/)
+    for (var i = 0; i < lines.length; i++) {
+        var line = String(lines[i] || "").trim()
+        if (!line) continue
+        var parts = line.split("\t")
+        var mark = String(parts[3] || "")
+        rows.push({
+            cli: parts[0] || "",
+            installed: parts[1] || "missing",
+            auth: parts[2] || "",
+            key: mark === "key:saved" ? "saved" : "none"
+        })
     }
-    return out
-}
-
-function parseAuth(raw) {
-    try {
-        return copySecrets(JSON.parse(String(raw || "{}")))
-    } catch (e) {
-        return {}
-    }
-}
-
-function serializeAuth(auth) {
-    return JSON.stringify(copySecrets(auth), null, 2) + "\n"
-}
-
-function secretFor(auth, cli) {
-    if (!needsSecret(cli)) return ""
-    return auth && auth[cli] ? String(auth[cli]) : ""
-}
-
-function setSecret(auth, cli, key) {
-    var out = copySecrets(auth)
-    var id = String(cli || "")
-    var text = String(key || "").replace(/\s+/g, "")
-    if (needsSecret(id) && text && text.length <= 4096) out[id] = text
-    else delete out[id]
-    return out
+    return rows
 }
 
 function cleanEnabled(src) {
