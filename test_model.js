@@ -245,10 +245,26 @@ eq(
     "status rows keep key:saved and key:none"
 )
 eq(
+    M.parseProviderStatus("openclaw\tinstalled\tgateway\tkey:refused\n")[0].key,
+    "refused",
+    "key:refused stays refused"
+)
+eq(
     M.parseProviderStatus("openclaw\tinstalled\tgateway\tfixture-openclaw-key\n")[0].key,
     "none",
-    "a status cell that is not key:saved or key:none is not a key"
+    "a status cell that is not key:saved or key:refused is not a key"
 )
+eq(
+    M.keyFileNote("auth file must be mode 600"),
+    "Other users can read this key's file. Replace it to fix that.",
+    "loose auth file note"
+)
+eq(
+    M.keyFileNote("auth file refused\n"),
+    "Other users can read this key's file. Replace it to fix that.",
+    "refused auth file note"
+)
+eq(M.keyFileNote("connection refused"), "", "other send errors stay raw")
 is(M.serializeSelection({ models: {} }).indexOf("sekret") < 0, "selection json has no api key")
 eq(M.setAutoPaste({ models: {} }, true), { models: {}, autoPaste: true }, "autoPaste on")
 eq(M.setAutoPaste({ models: {}, autoPaste: true }, false), { models: {} }, "autoPaste off")

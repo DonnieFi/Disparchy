@@ -385,11 +385,14 @@ function parseProviderStatus(raw) {
         if (!line) continue
         var parts = line.split("\t")
         var mark = String(parts[3] || "")
+        var key = "none"
+        if (mark === "key:saved") key = "saved"
+        else if (mark === "key:refused") key = "refused"
         rows.push({
             cli: parts[0] || "",
             installed: parts[1] || "missing",
             auth: parts[2] || "",
-            key: mark === "key:saved" ? "saved" : "none"
+            key: key
         })
     }
     return rows
@@ -932,6 +935,13 @@ function targetsForCli(run, cli) {
         if (run.targets[i].cli === cli) out.push(run.targets[i])
     }
     return out
+}
+
+function keyFileNote(error) {
+    var text = String(error || "").trim()
+    if (text === "auth file must be mode 600" || text === "auth file refused")
+        return "Other users can read this key's file. Replace it to fix that."
+    return ""
 }
 
 function statusFromExit(code, stderr) {

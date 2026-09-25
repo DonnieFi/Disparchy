@@ -443,6 +443,49 @@ def test_status_key_refused_when_read_would_refuse():
         assert auth.is_symlink()
 
 
+def test_set_key_clears_refused_status():
+    replaced = "fixture-openclaw-replaced"
+    with tempfile.TemporaryDirectory() as folder:
+        root = Path(folder)
+        auth = _loose_auth(root, '{"openclaw": "%s"}\n' % FAKE_OPENCLAW)
+
+        def rows_of():
+            proc = subprocess.run(
+                [sys.executable, str(RUNNER), "--status"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                env=_isolated_env(root),
+            )
+            assert proc.returncode == 0, proc.stderr
+            blob = proc.stdout + proc.stderr
+            assert FAKE_OPENCLAW not in blob
+            assert FAKE_HERMES not in blob
+            assert replaced not in blob
+            return {
+                line.split("\t")[0]: line.split("\t")[-1]
+                for line in proc.stdout.splitlines()
+                if line.strip()
+            }
+
+        before = rows_of()
+        assert before["openclaw"] == "key:refused"
+        assert before["hermes"] == "key:refused"
+        proc = _run_set_key(root, "openclaw", replaced + "\n")
+        assert proc.returncode == 0, proc.stderr
+        written = proc.stdout + proc.stderr
+        assert FAKE_OPENCLAW not in written
+        assert replaced not in written
+        assert stat_mode(auth) == 0o600
+        stored = auth.read_text(encoding="utf-8")
+        assert replaced in stored
+        assert FAKE_HERMES not in stored
+        after = rows_of()
+        assert after["openclaw"] == "key:saved"
+        assert after["hermes"] == "key:none"
+
+
 def test_set_key_refuses_other_owner():
     mod = load()
     real_getuid = os.getuid
@@ -538,6 +581,7 @@ if __name__ == "__main__":
     test_set_key_removes_from_loose_auth_file()
     test_send_refuses_loose_auth_file()
     test_status_key_refused_when_read_would_refuse()
+    test_set_key_clears_refused_status()
     test_set_key_refuses_other_owner()
     test_auth_file_flag_is_rejected()
     test_qml_does_not_touch_keys()

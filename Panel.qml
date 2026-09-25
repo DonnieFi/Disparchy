@@ -1510,18 +1510,19 @@ Panel {
                                             spacing: Style.space(4)
 
                                             readonly property bool saved: setupRow.status.key === "saved"
-                                            readonly property bool editing: !saved || root.replacingCli === setupRow.cliId
+                                            readonly property bool refused: setupRow.status.key === "refused"
+                                            readonly property bool editing: (!saved && !refused) || root.replacingCli === setupRow.cliId
 
                                             property bool panelWasOpen: root.opened
                                             onPanelWasOpenChanged: if (!panelWasOpen) secretEdit.text = ""
 
                                             Row {
-                                                visible: keyBlock.saved && !keyBlock.editing
+                                                visible: (keyBlock.saved || keyBlock.refused) && !keyBlock.editing
                                                 width: parent.width
                                                 spacing: Style.space(12)
 
                                                 Text {
-                                                    text: "Key saved"
+                                                    text: keyBlock.saved ? "Key saved" : "Key not used"
                                                     color: root.ink
                                                     font.family: root.fontFamily
                                                     font.pixelSize: Style.font.caption
@@ -1559,6 +1560,16 @@ Panel {
                                                         onClicked: root.askRemoveKey(setupRow.cliId)
                                                     }
                                                 }
+                                            }
+
+                                            Text {
+                                                visible: keyBlock.refused && !keyBlock.editing
+                                                width: parent.width
+                                                text: "Other users can read this key's file. Replace it to fix that."
+                                                color: root.dim
+                                                font.family: root.fontFamily
+                                                font.pixelSize: Style.font.caption
+                                                wrapMode: Text.WordWrap
                                             }
 
                                             Row {
@@ -1975,9 +1986,11 @@ Panel {
                             height: cardContent.implicitHeight + Style.space(20)
 
                             readonly property color tint: root.tintFor(modelData.cli)
+                            readonly property string keyNote: Model.keyFileNote(modelData.error)
                             readonly property string bodyText: modelData.answer !== "" ? modelData.answer
-                                : (modelData.error !== "" ? modelData.error
-                                    : (modelData.status === "pending" ? "Running…" : ""))
+                                : (keyNote !== "" ? keyNote
+                                    : (modelData.error !== "" ? modelData.error
+                                        : (modelData.status === "pending" ? "Running…" : "")))
 
                             Rectangle {
                                 anchors.fill: parent
@@ -2061,7 +2074,8 @@ Panel {
                                     textFormat: resultCard.modelData.answer !== ""
                                         ? Text.MarkdownText : Text.PlainText
                                     color: resultCard.modelData.answer !== "" ? root.ink
-                                        : (resultCard.modelData.error !== "" ? Color.urgent : root.dim)
+                                        : (resultCard.keyNote !== "" ? root.dim
+                                            : (resultCard.modelData.error !== "" ? Color.urgent : root.dim))
                                     linkColor: resultCard.tint
                                     font.family: root.fontFamily
                                     font.pixelSize: Style.font.bodySmall
