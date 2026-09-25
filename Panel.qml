@@ -1517,7 +1517,8 @@ Panel {
 
                                             readonly property bool saved: setupRow.status.key === "saved"
                                             readonly property bool refused: setupRow.status.key === "refused"
-                                            readonly property bool editing: (!saved && !refused) || root.replacingCli === setupRow.cliId
+                                            readonly property bool unusable: setupRow.status.key === "unusable"
+                                            readonly property bool editing: !unusable && ((!saved && !refused) || root.replacingCli === setupRow.cliId)
 
                                             property bool panelWasOpen: root.opened
                                             onPanelWasOpenChanged: if (!panelWasOpen) secretEdit.text = ""
@@ -1572,6 +1573,16 @@ Panel {
                                                 visible: keyBlock.refused && !keyBlock.editing
                                                 width: parent.width
                                                 text: "Other users can read this key's file. Replace it to fix that."
+                                                color: root.dim
+                                                font.family: root.fontFamily
+                                                font.pixelSize: Style.font.caption
+                                                wrapMode: Text.WordWrap
+                                            }
+
+                                            Text {
+                                                visible: keyBlock.unusable && Model.keyUnusableLine !== ""
+                                                width: parent.width
+                                                text: Model.keyUnusableLine
                                                 color: root.dim
                                                 font.family: root.fontFamily
                                                 font.pixelSize: Style.font.caption
@@ -1992,7 +2003,7 @@ Panel {
                             height: cardContent.implicitHeight + Style.space(20)
 
                             readonly property color tint: root.tintFor(modelData.cli)
-                            readonly property string keyNote: Model.keyFileNote(modelData.error)
+                            readonly property string keyNote: Model.keyFileNote(modelData.error, root.statusFor(modelData.cli).key)
                             readonly property string bodyText: modelData.answer !== "" ? modelData.answer
                                 : (keyNote !== "" ? keyNote
                                     : (modelData.error !== "" ? modelData.error

@@ -388,6 +388,7 @@ function parseProviderStatus(raw) {
         var key = "none"
         if (mark === "key:saved") key = "saved"
         else if (mark === "key:refused") key = "refused"
+        else if (mark === "key:unusable") key = "unusable"
         rows.push({
             cli: parts[0] || "",
             installed: parts[1] || "missing",
@@ -941,11 +942,20 @@ function targetsForCli(run, cli) {
     return out
 }
 
-function keyFileNote(error) {
+var keyUnusableLine = ""
+
+function keyFileNote(error, keyState) {
     var text = String(error || "").trim()
-    if (text === "auth file must be mode 600" || text === "auth file refused")
-        return "Other users can read this key's file. Replace it to fix that."
-    return ""
+    if (!text)
+        return ""
+    var state = String(keyState || "")
+    var modeFault = text === "auth file must be mode 600"
+    var blocked = text === "auth file refused" || text === "auth file unreadable"
+    if (!modeFault && !blocked)
+        return ""
+    if (state === "unusable" || (blocked && state !== "refused"))
+        return keyUnusableLine
+    return "Other users can read this key's file. Replace it to fix that."
 }
 
 function statusFromExit(code, stderr) {

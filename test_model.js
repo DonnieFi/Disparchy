@@ -292,21 +292,27 @@ eq(
     "key:refused stays refused"
 )
 eq(
+    M.parseProviderStatus("hermes\tinstalled\tlocal node\tkey:unusable\n")[0].key,
+    "unusable",
+    "key:unusable stays unusable"
+)
+eq(
     M.parseProviderStatus("openclaw\tinstalled\tgateway\tfixture-openclaw-key\n")[0].key,
     "none",
-    "a status cell that is not key:saved or key:refused is not a key"
+    "an unknown status cell is not a key"
+)
+eq(M.keyUnusableLine, "", "unusable copy is not invented")
+eq(
+    M.keyFileNote("auth file must be mode 600", "refused"),
+    "Other users can read this key's file. Replace it to fix that.",
+    "refused provider note"
 )
 eq(
-    M.keyFileNote("auth file must be mode 600"),
-    "Other users can read this key's file. Replace it to fix that.",
-    "loose auth file note"
+    M.keyFileNote("auth file refused", "unusable"),
+    "",
+    "unusable provider does not use the refused line"
 )
-eq(
-    M.keyFileNote("auth file refused\n"),
-    "Other users can read this key's file. Replace it to fix that.",
-    "refused auth file note"
-)
-eq(M.keyFileNote("connection refused"), "", "other send errors stay raw")
+eq(M.keyFileNote("connection refused", "refused"), "", "other send errors stay raw")
 is(M.serializeSelection({ models: {} }).indexOf("sekret") < 0, "selection json has no api key")
 eq(M.setAutoPaste({ models: {} }, true), { models: {}, autoPaste: true }, "autoPaste on")
 eq(M.setAutoPaste({ models: {}, autoPaste: true }, false), { models: {} }, "autoPaste off")

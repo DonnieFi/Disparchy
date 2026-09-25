@@ -11,10 +11,11 @@ non-regular state directory or auth.json is refused and nothing is
 written. --set-key accepts an existing regular auth.json owned by the
 current user even when the mode is loose, and the rewrite lands at
 mode 0600. A file owned by another user is refused. Reading a key
-still refuses a loose auth.json. --status
-prints key:saved, key:none, or key:refused and never any part of a key.
-key:refused means the file exists (lstat, so a symlink is not followed)
-but a strict read would refuse it.
+still refuses a loose auth.json. --status prints key:none, key:saved,
+key:refused, or key:unusable and never any part of a key. key:refused
+is only a regular file you own whose JSON is a dict and whose mode is
+loose. Everything else that is not a missing or readable file is
+key:unusable, and that column cannot crash --status.
 No shell interpolation."""
 from __future__ import annotations
 
@@ -27,6 +28,7 @@ import stat
 import subprocess
 import sys
 import time
+from typing import NamedTuple
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -269,15 +271,23 @@ def normalize_key(raw: str) -> str:
     return text
 
 
+class AuthFile(NamedTuple):
+    state: str
+    payload: dict | None
+    message: str
+
+
 def lstat_auth_file(path: Path) -> os.stat_result:
     """Identity check shared by set_key and the strict read.
 
     lstat never follows a symlink. A symlink, anything that is not a
-    regular file, or a file owned by another user is refused.
+    regular file, another owner, or an OSError on the file is refused.
     """
     try:
         info = os.lstat(path)
     except FileNotFoundError as exc:
+        raise SystemExit("auth file refused") from exc
+    except OSError as exc:
         raise SystemExit("auth file refused") from exc
     if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
         raise SystemExit("auth file refused")
@@ -286,17 +296,42 @@ def lstat_auth_file(path: Path) -> os.stat_result:
     return info
 
 
-def load_auth(path: Path) -> dict:
-    info = lstat_auth_file(path)
-    if info.st_mode & 0o077:
-        raise SystemExit("auth file must be mode 600")
+def auth_file_state(path: Path) -> AuthFile:
+    """Classify auth.json without raising.
+
+    missing: lstat raises FileNotFoundError.
+    ok: lstat_auth_file passes, the JSON is a dict, and the mode is 0600-class.
+    refused: that same file, and the only fault is group or other mode bits.
+    unusable: symlink, another owner, a non-regular file, broken or
+    non-dict JSON, or any OSError reading the file or its directory.
+    """
+    try:
+        info = os.lstat(path)
+    except FileNotFoundError:
+        return AuthFile("missing", None, "auth file refused")
+    except OSError:
+        return AuthFile("unusable", None, "auth file refused")
+    try:
+        info = lstat_auth_file(path)
+    except SystemExit as exc:
+        return AuthFile("unusable", None, str(exc) or "auth file refused")
+    loose = bool(info.st_mode & 0o077)
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise SystemExit("auth file unreadable") from exc
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return AuthFile("unusable", None, "auth file unreadable")
     if not isinstance(payload, dict):
-        raise SystemExit("auth file unreadable")
-    return payload
+        return AuthFile("unusable", None, "auth file unreadable")
+    if loose:
+        return AuthFile("refused", payload, "auth file must be mode 600")
+    return AuthFile("ok", payload, "")
+
+
+def load_auth(path: Path) -> dict:
+    found = auth_file_state(path)
+    if found.state != "ok" or found.payload is None:
+        raise SystemExit(found.message or "auth file refused")
+    return found.payload
 
 
 def atomic_write_auth(directory: Path, payload: dict) -> None:
@@ -324,18 +359,13 @@ def set_key(cli: str, raw: str) -> None:
     directory = ensure_state_dir()
     target = directory / "auth.json"
     payload: dict = {}
-    # A loose mode is accepted here only. lstat_auth_file still refuses a
-    # symlink or another owner's file. The rewrite below replaces it at
-    # mode 0600. load_auth / read_bearer stay strict about the mode.
+    # Accept a missing file, or a regular file this user owns whose JSON
+    # is a dict, including a loose mode. Never rewrite an unusable file.
     if target.is_symlink() or target.exists():
-        lstat_auth_file(target)
-        try:
-            parsed = json.loads(target.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            raise SystemExit("auth file unreadable") from exc
-        if not isinstance(parsed, dict):
-            raise SystemExit("auth file unreadable")
-        payload = parsed
+        found = auth_file_state(target)
+        if found.state not in ("ok", "refused") or found.payload is None:
+            raise SystemExit(found.message or "auth file refused")
+        payload = found.payload
     text = normalize_key(raw)
     if text == "":
         payload.pop(cli, None)
@@ -347,13 +377,12 @@ def set_key(cli: str, raw: str) -> None:
 def read_bearer(cli: str) -> str:
     if cli not in CHAT_HTTP:
         return ""
-    file = auth_path()
-    try:
-        os.lstat(file)
-    except FileNotFoundError:
+    found = auth_file_state(auth_path())
+    if found.state == "missing":
         return ""
-    payload = load_auth(file)
-    key = payload.get(cli)
+    if found.state != "ok" or found.payload is None:
+        raise SystemExit(found.message or "auth file refused")
+    key = found.payload.get(cli)
     if not isinstance(key, str):
         return ""
     return key.strip()
@@ -363,14 +392,19 @@ def key_column(cli: str) -> str:
     if cli not in CHAT_HTTP:
         return "key:none"
     try:
-        os.lstat(auth_path())
-    except FileNotFoundError:
+        found = auth_file_state(auth_path())
+    except Exception:
+        return "key:unusable"
+    if found.state == "missing":
         return "key:none"
-    try:
-        token = read_bearer(cli)
-    except SystemExit:
+    if found.state == "unusable":
+        return "key:unusable"
+    if found.state == "refused":
         return "key:refused"
-    return "key:saved" if token else "key:none"
+    key = (found.payload or {}).get(cli)
+    if isinstance(key, str) and key.strip():
+        return "key:saved"
+    return "key:none"
 
 
 def chat_complete(
