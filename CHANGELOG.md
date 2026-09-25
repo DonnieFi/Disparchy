@@ -3,6 +3,11 @@
 All notable changes to Disparchy (`dkfiander.disparchy`) are documented here.
 The version in `manifest.json` is the single source of truth.
 
+## 0.6.1, 2026-09-24
+
+- Capped HTTP provider responses at 8 MiB (1 MiB for model lists) while reading. A larger, truncated, or non-JSON body fails that column instead of exhausting memory or crashing the runner
+- Capped the HTTP error detail read at 300 bytes
+
 ## 0.6.0, 2026-09-24
 
 - OpenClaw and Hermes API keys are read and written only by the runner. Setup's key field is write-only: Save, Replace, and Remove, and no part of the key is shown
