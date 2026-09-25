@@ -120,6 +120,48 @@ eq(
 )
 eq(jobs[2].key, M.targetKey("grok", ""), "expandJobs empty model key")
 
+eq(
+    M.answerCount(
+        { models: { claude: ["sonnet"], ollama: ["llama3.2", "qwen2.5"] } },
+        [{ id: "claude" }, { id: "ollama" }]
+    ),
+    3,
+    "two providers where ollama has two models is 3"
+)
+
+const pillCases = [
+    {
+        name: "CLIs only",
+        selection: { models: { claude: ["sonnet"], codex: [""] } },
+        available: [{ id: "claude" }, { id: "codex" }],
+        expect: 2
+    },
+    {
+        name: "one Ollama model",
+        selection: { models: { ollama: ["llama3.2"] } },
+        available: [{ id: "ollama" }],
+        expect: 1
+    },
+    {
+        name: "two Ollama models + LM Studio",
+        selection: { models: { ollama: ["llama3.2", "qwen2.5"], lmstudio: ["local"] } },
+        available: [{ id: "ollama" }, { id: "lmstudio" }],
+        expect: 3
+    },
+    {
+        name: "nothing armed",
+        selection: { models: {} },
+        available: [{ id: "claude" }, { id: "ollama" }, { id: "lmstudio" }],
+        expect: 0
+    }
+]
+for (var c = 0; c < pillCases.length; c++) {
+    var sample = pillCases[c]
+    var columns = M.expandJobs(sample.selection, sample.available).length
+    eq(M.answerCount(sample.selection, sample.available), sample.expect, sample.name)
+    eq(M.answerCount(sample.selection, sample.available), columns, "pill count equals column count: " + sample.name)
+}
+
 const run = {
     id: "r1",
     startedAt: "t",

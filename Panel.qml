@@ -91,12 +91,7 @@ Panel {
     readonly property bool viewingPast: viewingRunId !== ""
     readonly property bool canClear: !viewingPast && inFlight === 0
         && (promptText.length > 0 || (displayRun && displayRun.targets && displayRun.targets.length > 0))
-    readonly property int armedCount: {
-        var n = 0
-        for (var i = 0; i < shown.length; i++)
-            if (Model.isArmed(selection, shown[i].id)) n++
-        return n
-    }
+    readonly property int armedCount: Model.answerCount(selection, shown)
     readonly property string headerHint: {
         if (setupOpen) return "Switch a provider onto the bar. Click sign in to open the CLI."
         if (historyOpen) return "Past runs stay on disk."
@@ -775,6 +770,15 @@ Panel {
     Slot { id: slot4 }
     Slot { id: slot5 }
 
+    TextMetrics {
+        id: portChipMetrics
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.caption
+        text: ":18789"
+    }
+
+    readonly property int portChipWidth: Math.ceil(portChipMetrics.advanceWidth) + Style.space(12)
+
     component TabAction: Rectangle {
         id: act
         property string label: ""
@@ -1449,6 +1453,9 @@ Panel {
                                                 id: endpointEdit
                                                 width: parent.width - portRow.width - parent.spacing
                                                 leftPadding: Style.space(8)
+                                                topPadding: 0
+                                                bottomPadding: 0
+                                                verticalAlignment: TextInput.AlignVCenter
                                                 height: parent.height
                                                 text: Model.endpointFor(root.selection, setupRow.cliId)
                                                 color: root.ink
@@ -1474,7 +1481,7 @@ Panel {
                                                     model: setupRow.presets
                                                     delegate: Rectangle {
                                                         required property string modelData
-                                                        width: portText.implicitWidth + Style.space(12)
+                                                        width: root.portChipWidth
                                                         height: Style.space(24)
                                                         radius: Style.space(12)
                                                         color: endpointEdit.text === modelData
@@ -1483,7 +1490,6 @@ Panel {
                                                         border.color: setupRow.tint
                                                         border.width: 1
                                                         Text {
-                                                            id: portText
                                                             anchors.centerIn: parent
                                                             text: root.portLabel(modelData)
                                                             color: setupRow.tint
