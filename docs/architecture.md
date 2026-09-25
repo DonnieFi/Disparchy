@@ -54,23 +54,23 @@ HTTP providers are available when enabled, even if the server is down.
 
 | Id | Binary | Argv |
 |----|--------|------|
-| `claude` | `claude` | `-p --output-format text [--model M] -- PROMPT` |
-| `codex` | `codex` | `exec --skip-git-repo-check [--model M] -- PROMPT` |
-| `grok` | `grok` | `--no-auto-update -p PROMPT [--model M] --output-format plain` |
-| `antigravity` | `agy` | `--output-format text [--model M] --print PROMPT` |
-| `cursor` | `cursor-agent`, then `agent` | `-p --output-format text [--model M] -- PROMPT` |
+| `claude` | `claude` | `-p --output-format text [--model M]`, prompt on stdin |
+| `codex` | `codex` | `exec --skip-git-repo-check [--model M] -`, prompt on stdin |
+| `grok` | `grok` | `--no-auto-update --prompt-file FILE [--model M] --output-format plain` |
+| `antigravity` | `agy` | `--input-format stream-json --output-format stream-json [--model M]`, prompt on stdin as one `{"event":"user",...}` message. The runner prints the `result` event's `response` |
+| `cursor` | `cursor-agent`, then `agent` | `-p --output-format text [--model M]`, prompt on stdin |
 | `openclaw` | `openclaw` | gateway up: `agent --message-file FILE [--model M]`. gateway down: `agent exec --message-file FILE [--model M]`. With an API key: `POST {base}/v1/chat/completions`, model `openclaw/default` when empty |
 | `hermes` | `hermes` | `chat --oneshot --query-file FILE [-m M]`. With an API key: `POST {base}/v1/chat/completions`, model `hermes-agent` when empty |
 | `ollama` | HTTP | `POST {base}/api/generate` with `model`, `prompt`, `stream: false` |
 | `lmstudio` | HTTP | `POST {base}/v1/chat/completions` |
 
-`--print` on Antigravity consumes the next argument, so `--output-format` comes first. Cursor never receives `-m`.
+The prompt text is never an argument, because any local user can read another process's command line. `argv_for` takes only the prompt file path. Cursor never receives `-m`.
 
 OpenClaw's gateway probe is a TCP connect to `127.0.0.1:18789` with a 0.4s timeout.
 
 An empty Ollama model becomes `llama3.2`. An empty LM Studio model becomes `local`. Hermes omits `-m` when the model is empty.
 
-Codex needs `--skip-git-repo-check` because the working directory is `$HOME`, which is not a trusted git directory. Stdin is `DEVNULL`. The runner does not stop a Codex send because `codex login status` printed "Not logged in". That string can disagree with a working `codex exec`.
+Codex needs `--skip-git-repo-check` because the working directory is `$HOME`, which is not a trusted git directory. `-` makes it read the prompt from stdin. The runner does not stop a Codex send because `codex login status` printed "Not logged in". That string can disagree with a working `codex exec`.
 
 ## Runner flags
 
