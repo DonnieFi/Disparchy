@@ -38,6 +38,18 @@ function stateDir(home, xdgState) {
     return base + "/omarchy/" + pluginId()
 }
 
+function authFile(home, xdgState) {
+    return stateDir(home, xdgState) + "/auth.json"
+}
+
+function displayPath(path, home) {
+    var file = String(path || "")
+    var root = String(home || "").replace(/\/$/, "")
+    if (root && (file === root || file.indexOf(root + "/") === 0))
+        return "~" + file.slice(root.length)
+    return file
+}
+
 function pluginDirFromUrl(url) {
     var u = String(url || "")
     if (u.indexOf("file://") === 0)
@@ -385,11 +397,15 @@ function parseProviderStatus(raw) {
         if (!line) continue
         var parts = line.split("\t")
         var mark = String(parts[3] || "")
+        var key = "none"
+        if (mark === "key:saved") key = "saved"
+        else if (mark === "key:refused") key = "refused"
+        else if (mark === "key:unusable") key = "unusable"
         rows.push({
             cli: parts[0] || "",
             installed: parts[1] || "missing",
             auth: parts[2] || "",
-            key: mark === "key:saved" ? "saved" : "none"
+            key: key
         })
     }
     return rows
@@ -936,6 +952,36 @@ function targetsForCli(run, cli) {
         if (run.targets[i].cli === cli) out.push(run.targets[i])
     }
     return out
+}
+
+function keyUnusableLine(path, home) {
+    return "Disparchy won't read or change this file. Move " + displayPath(path, home) + " aside, then add your key again."
+}
+
+function keyEditorOpen(key, replacing) {
+    var state = String(key || "")
+    if (state === "unusable") return false
+    if (state !== "saved" && state !== "refused") return true
+    return !!replacing
+}
+
+function keyHasActions(key) {
+    var state = String(key || "")
+    return state === "saved" || state === "refused"
+}
+
+function keyFileNote(error, keyState, path, home) {
+    var text = String(error || "").trim()
+    if (!text)
+        return ""
+    var state = String(keyState || "")
+    var modeFault = text === "auth file must be mode 600"
+    var blocked = text === "auth file refused" || text === "auth file unreadable"
+    if (!modeFault && !blocked)
+        return ""
+    if (state === "unusable" || (blocked && state !== "refused"))
+        return keyUnusableLine(path, home)
+    return "Other users can read this key's file. Replace it to fix that."
 }
 
 function statusFromExit(code, stderr) {

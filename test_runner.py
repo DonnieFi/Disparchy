@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import importlib.machinery
 import importlib.util
+import io
 import os
 import re
 import subprocess
 import sys
 import tempfile
+from contextlib import redirect_stdout
 from pathlib import Path
 
 from test_model import test_model
@@ -335,6 +337,329 @@ def test_set_key_stores_and_removes_within_timeout():
         assert FAKE_HERMES not in blob
 
 
+def _loose_auth(root: Path, body: str) -> Path:
+    state = root / "omarchy" / "dkfiander.disparchy"
+    state.mkdir(parents=True, mode=0o700)
+    auth = state / "auth.json"
+    auth.write_text(body, encoding="utf-8")
+    os.chmod(auth, 0o644)
+    return auth
+
+
+def test_set_key_repairs_loose_auth_file():
+    with tempfile.TemporaryDirectory() as folder:
+        root = Path(folder)
+        auth = _loose_auth(root, '{"hermes": "%s"}\n' % FAKE_HERMES)
+        assert stat_mode(auth) == 0o644
+        proc = _run_set_key(root, "openclaw", FAKE_OPENCLAW + "\n")
+        assert proc.returncode == 0, proc.stderr
+        assert stat_mode(auth) == 0o600
+        text = auth.read_text(encoding="utf-8")
+        assert FAKE_HERMES in text
+        assert FAKE_OPENCLAW in text
+        assert FAKE_OPENCLAW not in proc.stdout + proc.stderr
+
+
+def test_set_key_removes_from_loose_auth_file():
+    with tempfile.TemporaryDirectory() as folder:
+        root = Path(folder)
+        auth = _loose_auth(
+            root,
+            '{"openclaw": "%s", "hermes": "%s"}\n' % (FAKE_OPENCLAW, FAKE_HERMES),
+        )
+        proc = _run_set_key(root, "openclaw", "")
+        assert proc.returncode == 0, proc.stderr
+        assert stat_mode(auth) == 0o600
+        text = auth.read_text(encoding="utf-8")
+        assert FAKE_OPENCLAW not in text
+        assert FAKE_HERMES in text
+
+
+def test_send_refuses_loose_auth_file():
+    with tempfile.TemporaryDirectory() as folder:
+        root = Path(folder)
+        auth = _loose_auth(root, '{"openclaw": "%s"}\n' % FAKE_OPENCLAW)
+        before = auth.read_bytes()
+        prompt = root / "prompt.txt"
+        prompt.write_text("hello\n", encoding="utf-8")
+        proc = subprocess.run(
+            [sys.executable, str(RUNNER), "--cli", "openclaw", "--prompt-file", str(prompt)],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            env=_isolated_env(root),
+        )
+        assert proc.returncode != 0, proc.stdout
+        blob = proc.stdout + proc.stderr
+        assert "mode 600" in blob
+        assert FAKE_OPENCLAW not in blob
+        assert auth.read_bytes() == before
+        assert stat_mode(auth) == 0o644
+
+
+def test_status_key_refused_when_read_would_refuse():
+    with tempfile.TemporaryDirectory() as folder:
+        root = Path(folder)
+        auth = _loose_auth(root, '{"openclaw": "%s"}\n' % FAKE_OPENCLAW)
+
+        def rows_of():
+            proc = subprocess.run(
+                [sys.executable, str(RUNNER), "--status"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                env=_isolated_env(root),
+            )
+            assert proc.returncode == 0, proc.stderr
+            blob = proc.stdout + proc.stderr
+            assert FAKE_OPENCLAW not in blob
+            assert FAKE_HERMES not in blob
+            return {
+                line.split("\t")[0]: line.split("\t")[-1]
+                for line in proc.stdout.splitlines()
+                if line.strip()
+            }
+
+        loose = rows_of()
+        assert loose["openclaw"] == "key:refused"
+        assert loose["hermes"] == "key:refused"
+        assert loose["claude"] == "key:none"
+        os.chmod(auth, 0o600)
+        assert stat_mode(auth) == 0o600
+        tight = rows_of()
+        assert tight["openclaw"] == "key:saved"
+        assert tight["hermes"] == "key:none"
+        assert tight["claude"] == "key:none"
+        outside = root / "outside.json"
+        outside.write_text('{"openclaw": "%s"}\n' % FAKE_OPENCLAW, encoding="utf-8")
+        os.chmod(outside, 0o600)
+        before = outside.read_bytes()
+        auth.unlink()
+        auth.symlink_to(outside)
+        linked = rows_of()
+        assert linked["openclaw"] == "key:unusable"
+        assert linked["hermes"] == "key:unusable"
+        assert outside.read_bytes() == before
+        assert auth.is_symlink()
+
+
+def test_set_key_clears_refused_status():
+    replaced = "fixture-openclaw-replaced"
+    with tempfile.TemporaryDirectory() as folder:
+        root = Path(folder)
+        auth = _loose_auth(root, '{"openclaw": "%s"}\n' % FAKE_OPENCLAW)
+
+        def rows_of():
+            proc = subprocess.run(
+                [sys.executable, str(RUNNER), "--status"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                env=_isolated_env(root),
+            )
+            assert proc.returncode == 0, proc.stderr
+            blob = proc.stdout + proc.stderr
+            assert FAKE_OPENCLAW not in blob
+            assert FAKE_HERMES not in blob
+            assert replaced not in blob
+            return {
+                line.split("\t")[0]: line.split("\t")[-1]
+                for line in proc.stdout.splitlines()
+                if line.strip()
+            }
+
+        before = rows_of()
+        assert before["openclaw"] == "key:refused"
+        assert before["hermes"] == "key:refused"
+        proc = _run_set_key(root, "openclaw", replaced + "\n")
+        assert proc.returncode == 0, proc.stderr
+        written = proc.stdout + proc.stderr
+        assert FAKE_OPENCLAW not in written
+        assert replaced not in written
+        assert stat_mode(auth) == 0o600
+        stored = auth.read_text(encoding="utf-8")
+        assert replaced in stored
+        assert FAKE_HERMES not in stored
+        after = rows_of()
+        assert after["openclaw"] == "key:saved"
+        assert after["hermes"] == "key:none"
+
+
+def _status_rows(root: Path) -> dict[str, str]:
+    proc = subprocess.run(
+        [sys.executable, str(RUNNER), "--status"],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=_isolated_env(root),
+    )
+    assert proc.returncode == 0, proc.stderr
+    blob = proc.stdout + proc.stderr
+    assert FAKE_OPENCLAW not in blob
+    assert FAKE_HERMES not in blob
+    assert "fixture-openclaw-replaced" not in blob
+    lines = [line for line in proc.stdout.splitlines() if line.strip()]
+    assert len(lines) == 9, lines
+    return {line.split("\t")[0]: line.split("\t")[-1] for line in lines}
+
+
+def test_status_symlink_is_unusable():
+    with tempfile.TemporaryDirectory() as folder:
+        root = Path(folder)
+        state = root / "omarchy" / "dkfiander.disparchy"
+        state.mkdir(parents=True, mode=0o700)
+        outside = root / "outside.json"
+        outside.write_text('{"openclaw": "%s"}\n' % FAKE_OPENCLAW, encoding="utf-8")
+        os.chmod(outside, 0o600)
+        before = outside.read_bytes()
+        auth = state / "auth.json"
+        auth.symlink_to(outside)
+        rows = _status_rows(root)
+        assert rows["openclaw"] == "key:unusable"
+        assert rows["hermes"] == "key:unusable"
+        assert rows["claude"] == "key:none"
+        assert outside.read_bytes() == before
+        assert auth.is_symlink()
+
+
+def test_set_key_refuses_broken_json():
+    broken = '{"openclaw": "%s"' % FAKE_OPENCLAW
+    with tempfile.TemporaryDirectory() as folder:
+        root = Path(folder)
+        state = root / "omarchy" / "dkfiander.disparchy"
+        state.mkdir(parents=True, mode=0o700)
+        auth = state / "auth.json"
+        auth.write_text(broken, encoding="utf-8")
+        os.chmod(auth, 0o600)
+        before = auth.read_bytes()
+        rows = _status_rows(root)
+        assert rows["openclaw"] == "key:unusable"
+        assert rows["hermes"] == "key:unusable"
+        saved = _run_set_key(root, "openclaw", "fixture-openclaw-replaced\n")
+        assert saved.returncode != 0, saved.stdout
+        assert "fixture-openclaw-replaced" not in saved.stdout + saved.stderr
+        assert FAKE_OPENCLAW not in saved.stdout + saved.stderr
+        assert auth.read_bytes() == before
+        removed = _run_set_key(root, "openclaw", "")
+        assert removed.returncode != 0, removed.stdout
+        assert auth.read_bytes() == before
+        assert stat_mode(auth) == 0o600
+        aside = auth.with_name("auth.json.aside")
+        auth.rename(aside)
+        cleared = _status_rows(root)
+        assert cleared["openclaw"] == "key:none"
+        assert cleared["hermes"] == "key:none"
+        assert aside.read_bytes() == before
+
+
+def test_status_loose_broken_json_is_unusable():
+    with tempfile.TemporaryDirectory() as folder:
+        root = Path(folder)
+        auth = _loose_auth(root, '{"openclaw": "%s"' % FAKE_OPENCLAW)
+        before = auth.read_bytes()
+        rows = _status_rows(root)
+        assert rows["openclaw"] == "key:unusable"
+        assert rows["hermes"] == "key:unusable"
+        assert rows["openclaw"] != "key:refused"
+        assert auth.read_bytes() == before
+        assert stat_mode(auth) == 0o644
+
+
+def test_status_non_dict_json_is_unusable():
+    with tempfile.TemporaryDirectory() as folder:
+        root = Path(folder)
+        state = root / "omarchy" / "dkfiander.disparchy"
+        state.mkdir(parents=True, mode=0o700)
+        auth = state / "auth.json"
+        auth.write_text("[]\n", encoding="utf-8")
+        os.chmod(auth, 0o600)
+        rows = _status_rows(root)
+        assert rows["openclaw"] == "key:unusable"
+        assert rows["hermes"] == "key:unusable"
+        assert auth.read_text(encoding="utf-8") == "[]\n"
+
+
+def test_status_unreadable_state_dir_is_unusable():
+    if os.geteuid() == 0:
+        return
+    with tempfile.TemporaryDirectory() as folder:
+        root = Path(folder)
+        state = root / "omarchy" / "dkfiander.disparchy"
+        state.mkdir(parents=True, mode=0o700)
+        auth = state / "auth.json"
+        auth.write_text('{"openclaw": "%s"}\n' % FAKE_OPENCLAW, encoding="utf-8")
+        os.chmod(auth, 0o600)
+        os.chmod(state, 0)
+        try:
+            rows = _status_rows(root)
+            assert rows["openclaw"] == "key:unusable"
+            assert rows["hermes"] == "key:unusable"
+            assert rows["claude"] == "key:none"
+        finally:
+            os.chmod(state, 0o700)
+
+
+def test_status_other_owner_is_unusable():
+    mod = load()
+    real_getuid = os.getuid
+    with tempfile.TemporaryDirectory() as folder:
+        os.environ["XDG_STATE_HOME"] = folder
+        os.getuid = lambda: real_getuid() + 1
+        try:
+            root = Path(folder)
+            state = root / "omarchy" / "dkfiander.disparchy"
+            state.mkdir(parents=True, mode=0o700)
+            auth = state / "auth.json"
+            auth.write_text('{"openclaw": "%s"}\n' % FAKE_OPENCLAW, encoding="utf-8")
+            os.chmod(auth, 0o600)
+            before = auth.read_bytes()
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                mod.print_status()
+            text = buf.getvalue()
+            assert FAKE_OPENCLAW not in text
+            rows = {
+                line.split("\t")[0]: line.split("\t")[-1]
+                for line in text.splitlines()
+                if line.strip()
+            }
+            assert len(rows) == 9, text
+            assert rows["openclaw"] == "key:unusable"
+            assert rows["hermes"] == "key:unusable"
+            assert auth.read_bytes() == before
+        finally:
+            os.getuid = real_getuid
+            os.environ.pop("XDG_STATE_HOME", None)
+
+
+def test_set_key_refuses_other_owner():
+    mod = load()
+    real_getuid = os.getuid
+    with tempfile.TemporaryDirectory() as folder:
+        os.environ["XDG_STATE_HOME"] = folder
+        os.getuid = lambda: real_getuid() + 1
+        try:
+            root = Path(folder)
+            auth = _loose_auth(root, '{"hermes": "%s"}\n' % FAKE_HERMES)
+            before = auth.read_bytes()
+            try:
+                mod.set_key("openclaw", FAKE_OPENCLAW + "\n")
+            except SystemExit as exc:
+                assert "refused" in str(exc)
+            else:
+                raise AssertionError("other uid was accepted")
+            assert auth.read_bytes() == before
+            assert stat_mode(auth) == 0o644
+            assert FAKE_OPENCLAW not in auth.read_text(encoding="utf-8")
+        finally:
+            os.getuid = real_getuid
+            os.environ.pop("XDG_STATE_HOME", None)
+
+
 def test_auth_file_flag_is_rejected():
     proc = subprocess.run(
         [sys.executable, str(RUNNER), "--auth-file", "unused.json"],
@@ -402,6 +727,18 @@ if __name__ == "__main__":
     test_set_key_refuses_symlink_dir()
     test_set_key_refuses_symlink_file()
     test_set_key_stores_and_removes_within_timeout()
+    test_set_key_repairs_loose_auth_file()
+    test_set_key_removes_from_loose_auth_file()
+    test_send_refuses_loose_auth_file()
+    test_status_key_refused_when_read_would_refuse()
+    test_set_key_clears_refused_status()
+    test_status_symlink_is_unusable()
+    test_set_key_refuses_broken_json()
+    test_status_loose_broken_json_is_unusable()
+    test_status_non_dict_json_is_unusable()
+    test_status_unreadable_state_dir_is_unusable()
+    test_status_other_owner_is_unusable()
+    test_set_key_refuses_other_owner()
     test_auth_file_flag_is_rejected()
     test_qml_does_not_touch_keys()
     test_set_key_command_is_stdin_only()

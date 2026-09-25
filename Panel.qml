@@ -54,6 +54,7 @@ Panel {
 
     readonly property string home: Quickshell.env("HOME") || ""
     readonly property string stateRoot: Model.stateDir(home, Quickshell.env("XDG_STATE_HOME"))
+    readonly property string authPath: Model.authFile(home, Quickshell.env("XDG_STATE_HOME"))
     readonly property string pluginDir: Model.pluginDirFromUrl(Qt.resolvedUrl("manifest.json"))
     readonly property string runnerPath: pluginDir + "/bin/disparchy-run"
     readonly property string historyPath: stateRoot + "/history.json"
@@ -1516,18 +1517,20 @@ Panel {
                                             spacing: Style.space(4)
 
                                             readonly property bool saved: setupRow.status.key === "saved"
-                                            readonly property bool editing: !saved || root.replacingCli === setupRow.cliId
+                                            readonly property bool refused: setupRow.status.key === "refused"
+                                            readonly property bool unusable: setupRow.status.key === "unusable"
+                                            readonly property bool editing: Model.keyEditorOpen(setupRow.status.key, root.replacingCli === setupRow.cliId)
 
                                             property bool panelWasOpen: root.opened
                                             onPanelWasOpenChanged: if (!panelWasOpen) secretEdit.text = ""
 
                                             Row {
-                                                visible: keyBlock.saved && !keyBlock.editing
+                                                visible: Model.keyHasActions(setupRow.status.key) && !keyBlock.editing
                                                 width: parent.width
                                                 spacing: Style.space(12)
 
                                                 Text {
-                                                    text: "Key saved"
+                                                    text: keyBlock.saved ? "Key saved" : "Key not used"
                                                     color: root.ink
                                                     font.family: root.fontFamily
                                                     font.pixelSize: Style.font.caption
@@ -1565,6 +1568,34 @@ Panel {
                                                         onClicked: root.askRemoveKey(setupRow.cliId)
                                                     }
                                                 }
+                                            }
+
+                                            Text {
+                                                visible: keyBlock.unusable
+                                                text: "Key file can't be used"
+                                                color: root.ink
+                                                font.family: root.fontFamily
+                                                font.pixelSize: Style.font.caption
+                                            }
+
+                                            Text {
+                                                visible: keyBlock.refused && !keyBlock.editing
+                                                width: parent.width
+                                                text: "Other users can read this key's file. Replace it to fix that."
+                                                color: root.dim
+                                                font.family: root.fontFamily
+                                                font.pixelSize: Style.font.caption
+                                                wrapMode: Text.WordWrap
+                                            }
+
+                                            Text {
+                                                visible: keyBlock.unusable
+                                                width: parent.width
+                                                text: Model.keyUnusableLine(root.authPath, root.home)
+                                                color: root.dim
+                                                font.family: root.fontFamily
+                                                font.pixelSize: Style.font.caption
+                                                wrapMode: Text.Wrap
                                             }
 
                                             Row {
@@ -1981,9 +2012,13 @@ Panel {
                             height: cardContent.implicitHeight + Style.space(20)
 
                             readonly property color tint: root.tintFor(modelData.cli)
+                            readonly property string providerKey: root.statusFor(modelData.cli).key
+                            readonly property string keyNote: Model.keyFileNote(modelData.error, providerKey, root.authPath, root.home)
+                            readonly property bool plainKeyNote: keyNote !== "" && modelData.answer === "" && providerKey === "unusable"
                             readonly property string bodyText: modelData.answer !== "" ? modelData.answer
-                                : (modelData.error !== "" ? modelData.error
-                                    : (modelData.status === "pending" ? "Running…" : ""))
+                                : (keyNote !== "" ? keyNote
+                                    : (modelData.error !== "" ? modelData.error
+                                        : (modelData.status === "pending" ? "Running…" : "")))
 
                             Rectangle {
                                 anchors.fill: parent
@@ -2001,7 +2036,7 @@ Panel {
                                 anchors.rightMargin: Style.space(9)
                                 height: Style.space(3)
                                 radius: 1
-                                color: modelData.status === "failed" || modelData.status === "timeout"
+                                color: (modelData.status === "failed" || modelData.status === "timeout") && !resultCard.plainKeyNote
                                     ? Color.urgent : resultCard.tint
                                 SequentialAnimation on opacity {
                                     running: resultCard.modelData.status === "pending"
@@ -2027,7 +2062,7 @@ Panel {
                                         height: width
                                         radius: width / 2
                                         anchors.verticalCenter: parent.verticalCenter
-                                        color: resultCard.modelData.status === "failed" || resultCard.modelData.status === "timeout"
+                                        color: (resultCard.modelData.status === "failed" || resultCard.modelData.status === "timeout") && !resultCard.plainKeyNote
                                             ? Color.urgent : resultCard.tint
                                     }
                                     Text {
@@ -2051,7 +2086,7 @@ Panel {
                                 Text {
                                     width: parent.width
                                     text: Model.nerdLine(resultCard.modelData)
-                                    color: resultCard.modelData.status === "failed" || resultCard.modelData.status === "timeout"
+                                    color: (resultCard.modelData.status === "failed" || resultCard.modelData.status === "timeout") && !resultCard.plainKeyNote
                                         ? Color.urgent : root.dim
                                     font.family: root.fontFamily
                                     font.pixelSize: Style.font.caption
@@ -2066,8 +2101,9 @@ Panel {
                                         : resultCard.bodyText
                                     textFormat: resultCard.modelData.answer !== ""
                                         ? Text.MarkdownText : Text.PlainText
-                                    color: resultCard.modelData.answer !== "" ? root.ink
-                                        : (resultCard.modelData.error !== "" ? Color.urgent : root.dim)
+                                    color: resultCard.modelData.answer !== "" || resultCard.plainKeyNote ? root.ink
+                                        : (resultCard.keyNote !== "" ? root.dim
+                                            : (resultCard.modelData.error !== "" ? Color.urgent : root.dim))
                                     linkColor: resultCard.tint
                                     font.family: root.fontFamily
                                     font.pixelSize: Style.font.bodySmall
