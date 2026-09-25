@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import shutil
 import stat
 import subprocess
 import tempfile
@@ -34,6 +35,9 @@ def snapshot(root: Path) -> list[tuple[str, int, str]]:
     return rows
 
 
+FOREIGN = (".disparchy-install.tmp", ".disparchy-install.bak", ".disparchy-install.precious")
+
+
 def layout(home: Path, extra: set[str]) -> None:
     omarchy = home / ".config" / "omarchy"
     plugins = omarchy / "plugins"
@@ -42,7 +46,19 @@ def layout(home: Path, extra: set[str]) -> None:
     leftover = sorted(
         path.name for path in omarchy.iterdir() if path.name.startswith(".disparchy-")
     )
-    assert leftover == [], leftover
+    assert leftover == sorted(FOREIGN), leftover
+
+
+def seed_foreign(home: Path) -> Path:
+    """Unrelated directories at the old fixed names and the staging prefix."""
+    omarchy = home / ".config" / "omarchy"
+    for name in FOREIGN:
+        folder = omarchy / name
+        folder.mkdir()
+        (folder / "precious.txt").write_bytes(name.encode() + b"\n")
+        (folder / "nested").mkdir()
+        (folder / "nested" / "deep.txt").write_bytes(b"deep\n")
+    return omarchy
 
 
 def run_install(home: Path, fail: str | None = None) -> subprocess.CompletedProcess[str]:
@@ -97,6 +113,8 @@ def test_install() -> None:
     with tempfile.TemporaryDirectory(prefix="disparchy-install.") as raw:
         home, target, state = make_home(Path(raw))
         state_before = snapshot(state)
+        omarchy = seed_foreign(home)
+        foreign_before = {name: snapshot(omarchy / name) for name in FOREIGN}
         other_file = home / ".config" / "omarchy" / "plugins" / "other.plugin" / "keep.txt"
         other_before = other_file.read_bytes()
 
@@ -141,6 +159,20 @@ def test_install() -> None:
         layout(home, {"other.plugin"})
         assert other_file.read_bytes() == other_before
 
+        # If the old install cannot be put back, it is kept, never deleted.
+        restore = run_install(home, fail="restore")
+        assert restore.returncode != 0, restore.stdout
+        assert not target.exists()
+        kept = Path(restore.stderr.strip().rsplit(" at ", 1)[1])
+        assert kept.name == "old" and kept.parent.parent == omarchy, kept
+        assert kept.parent.name.startswith(".disparchy-install.")
+        assert kept.parent.name not in FOREIGN
+        assert stat.S_IMODE(kept.parent.stat().st_mode) == 0o700
+        assert snapshot(kept) == before_swap
+        os.rename(kept, target)
+        shutil.rmtree(kept.parent)
+        layout(home, {"other.plugin"})
+
         # A missing target is one rename, with the same cleanup.
         os.rename(target, home / "held-aside")
         missing = run_install(home)
@@ -148,6 +180,9 @@ def test_install() -> None:
         assert_shipped(target)
         assert snapshot(state) == state_before
         layout(home, {"other.plugin"})
+
+        for name in FOREIGN:
+            assert snapshot(omarchy / name) == foreign_before[name], name
 
 
 if __name__ == "__main__":

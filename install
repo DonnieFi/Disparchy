@@ -8,34 +8,43 @@ src=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 config_home=${XDG_CONFIG_HOME:-"$HOME/.config"}
 plugins=$config_home/omarchy/plugins
 target=$plugins/dkfiander.disparchy
-# Same filesystem as plugins/, but outside plugins/, so a half-built tree
-# is never a directory the shell can load.
 omarchy=$(dirname -- "$plugins")
-tmp=$omarchy/.disparchy-install.tmp
-bak=$omarchy/.disparchy-install.bak
 
 die() {
     echo "install: $*" >&2
     exit 1
 }
 
+mkdir -p -- "$plugins"
+
+# A fresh private directory (mode 0700, unique name) beside plugins/: same
+# filesystem, so the swap is a rename, and outside plugins/, so a half-built
+# tree is never a directory the shell can load. It is the only path this
+# script removes recursively; nothing that existed before the run is deleted.
+work=$(mktemp -d -- "$omarchy/.disparchy-install.XXXXXXXX") || die "could not create a staging directory"
+new=$work/new
+old=$work/old
+keep_work=
+
 cleanup() {
     status=$?
-    rm -rf -- "$tmp"
+    if [ -z "$keep_work" ]; then
+        rm -rf -- "$work"
+    fi
     trap - EXIT
     exit "$status"
 }
 trap cleanup EXIT
+trap 'exit 130' HUP INT TERM
 
-rm -rf -- "$tmp"
-mkdir -p -- "$plugins" "$tmp/bin"
+mkdir -- "$new" "$new/bin"
 
 copy_file() {
     rel=$1
     if [ ! -f "$src/$rel" ]; then
         die "missing source file $rel"
     fi
-    cp -p -- "$src/$rel" "$tmp/$rel"
+    cp -p -- "$src/$rel" "$new/$rel"
 }
 
 # What manifest.json and the QML actually load. Nothing else is shipped.
@@ -56,32 +65,28 @@ copy_file bin/disparchy-run
 if [ -L "$target" ]; then
     link_to=$(readlink -- "$target") || die "could not read existing symlink"
     rm -- "$target"
-    if ! mv -T -- "$tmp" "$target"; then
+    if ! mv -T -- "$new" "$target"; then
         ln -s -- "$link_to" "$target" || die "could not restore symlink $target"
         die "could not replace symlink $target"
     fi
 elif [ ! -e "$target" ]; then
-    mv -T -- "$tmp" "$target"
+    mv -T -- "$new" "$target"
 elif [ -d "$target" ]; then
     # A real directory, empty or not. rename(2) cannot replace a non-empty
-    # directory, so move it aside and move the new tree in. If that second
-    # move fails, put the previous directory back.
-    rm -rf -- "$bak"
-    mv -T -- "$target" "$bak"
-    if [ "${DISPARCHY_INSTALL_FAIL:-}" = "swap" ] || ! mv -T -- "$tmp" "$target"; then
-        if ! mv -T -- "$bak" "$target"; then
-            die "restore failed; previous install left at $bak"
+    # directory, so move it into the private directory and move the new
+    # tree in. If that second move fails, put the previous directory back.
+    fail=${DISPARCHY_INSTALL_FAIL:-}
+    mv -T -- "$target" "$old"
+    if [ "$fail" = "swap" ] || [ "$fail" = "restore" ] || ! mv -T -- "$new" "$target"; then
+        if [ "$fail" = "restore" ] || ! mv -T -- "$old" "$target"; then
+            keep_work=1
+            die "restore failed; previous install left at $old"
         fi
-        if [ "${DISPARCHY_INSTALL_FAIL:-}" = "swap" ]; then
+        if [ "$fail" = "swap" ]; then
             die "injected swap failure"
         fi
         die "could not move the new install into place"
     fi
-    rm -rf -- "$bak"
 else
     die "$target exists and is not a directory or symlink"
-fi
-
-if [ -e "$bak" ] || [ -L "$bak" ]; then
-    rm -rf -- "$bak"
 fi
