@@ -867,6 +867,10 @@ function expandJobs(selection, available) {
     return out
 }
 
+function answerCount(selection, available) {
+    return expandJobs(selection, available).length
+}
+
 function newRun(prompt, jobs) {
     var src = Array.isArray(jobs) ? jobs : []
     var targets = []
