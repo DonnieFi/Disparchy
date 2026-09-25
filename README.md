@@ -10,21 +10,13 @@ Write one prompt, choose the providers, and compare their answers side by side. 
 
 [![Omarchy](https://img.shields.io/badge/Omarchy-plugin-00d3f2?style=flat-square)](https://omarchy.org)
 [![Quickshell](https://img.shields.io/badge/Quickshell-QML-5e81ac?style=flat-square)](https://quickshell.org)
-[![Version](https://img.shields.io/badge/version-0.4.0-4fc9d6?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.5.0-4fc9d6?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-a3be8c?style=flat-square)](LICENSE)
 
 Plugin id: `dkfiander.disparchy` · Install: `~/.config/omarchy/plugins/dkfiander.disparchy/`  
 Repo: [DonnieFi/Disparchy](https://github.com/DonnieFi/Disparchy) · Architecture: [`docs/architecture.md`](docs/architecture.md)
 
 </div>
-
----
-
-## See it in motion
-
-![Disparchy demo cycling through Ask, comparison results, Setup, History, and a selected saved run](docs/media/disparchy-demo.gif)
-
-This short visual tour uses sample prompts and provider states. The [GIF file](docs/media/disparchy-demo.gif) is ready to share.
 
 ---
 

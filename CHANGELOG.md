@@ -3,6 +3,14 @@
 All notable changes to Disparchy (`dkfiander.disparchy`) are documented here.
 The version in `manifest.json` is the single source of truth.
 
+## 0.5.0, 2026-09-24
+
+- Wrapped result columns instead of scrolling sideways
+- Fitted the panel to the result columns
+- Kept the panel width steady and wide enough for Setup
+- Renamed `escape()` to `handleEscape()` to fix the Qt 6.4/6.8 QML compile error
+- Added `test_qml.py` to compile the plugin QML
+
 ## 0.4.0, 2026-09-24
 
 - Added the theme-aware dispatch mark to the bar and panel header, with light and dark SVG/PNG assets
